@@ -27,8 +27,9 @@ class AircraftStore: ObservableObject {
         persist()
     }
 
-    func update(_ ac: Aircraft) {
-        guard let i = aircraft.firstIndex(where: { $0.id == ac.id }) else { return }
+    func update(_ ac: Aircraft, replacingID oldID: String? = nil) {
+        let searchID = oldID ?? ac.id
+        guard let i = aircraft.firstIndex(where: { $0.id == searchID }) else { return }
         aircraft[i] = ac
         persist()
     }
