@@ -1044,15 +1044,18 @@ struct ContentView: View {
             Spacer()
             if let alt = altOpt {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("MIN: \(Int(alt.rounded())) ft AGL")
+                    Text("MIN: \(Int((alt + airportElevFt).rounded())) ft MSL")
                         .font(.system(size: 18, weight: .bold, design: .monospaced))
                         .foregroundColor(canMakeIt ? color : .red)
+                    Text("\(Int(alt.rounded())) ft AGL")
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundColor(canMakeIt ? color.opacity(0.7) : .red.opacity(0.7))
                     Text(canMakeIt ? "✓ POSSIBLE" : "✗ NOT POSSIBLE")
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .foregroundColor(canMakeIt ? .green : .red)
                 }
             } else {
-                Text("MIN: >6,000 ft")
+                Text("MIN: >6,000 ft AGL")
                     .font(.system(size: 16, weight: .bold, design: .monospaced))
                     .foregroundColor(.red)
             }
@@ -1082,7 +1085,7 @@ struct ContentView: View {
                 .foregroundColor(Color.white)
                 .kerning(1.2)
 
-            Text("All altitudes are AGL — height above the airport surface.")
+            Text("Altitudes shown as MSL / AGL (height above airport at \(Int(airportElevFt)) ft MSL).")
                 .font(.system(size: 13, design: .monospaced))
                 .foregroundColor(Color.white)
                 .fixedSize(horizontal: false, vertical: true)
