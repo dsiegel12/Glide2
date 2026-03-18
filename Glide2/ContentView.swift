@@ -14,7 +14,8 @@ struct ContentView: View {
     @State private var runwayLengthFt = 3000.0
     @State private var windKts = 0.0          // positive = headwind on departure
     @State private var thresholdCrossingHt = 25.0   // ft AGL at runway threshold
-    @State private var engineFailureAlt = 500.0         // ft AGL at engine failure
+    @State private var engineFailureAlt = 1500.0        // ft MSL at engine failure
+    @State private var airportElevFt   = 1000.0        // ft MSL airport elevation
     @State private var groundRollFt = 800.0              // ft of ground roll before liftoff
     @State private var climbRateFpm = 700.0              // fpm climb rate after liftoff
     @State private var climbSpeedKts = 73.0              // Vy in kts
@@ -124,10 +125,12 @@ struct ContentView: View {
         return distAvailableNM >= distNeededNM
     }
 
-    var canReturnGeoNoWind: Bool   { canReturn(failureAlt: engineFailureAlt, headwindKts: 0,        threshold: 0,                  turnDeg: 180) }
-    var canReturnGeoWithWind: Bool { canReturn(failureAlt: engineFailureAlt, headwindKts: windKts,  threshold: 0,                  turnDeg: 180) }
-    var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAlt, headwindKts: 0,        threshold: thresholdCrossingHt, turnDeg: 180) }
-    var canReturnFullWithWind: Bool{ canReturn(failureAlt: engineFailureAlt, headwindKts: windKts,  threshold: thresholdCrossingHt, turnDeg: 180) }
+    var engineFailureAltAGL: Double { max(0, engineFailureAlt - airportElevFt) }
+
+    var canReturnGeoNoWind: Bool   { canReturn(failureAlt: engineFailureAltAGL, headwindKts: 0,        threshold: 0,                  turnDeg: 180) }
+    var canReturnGeoWithWind: Bool { canReturn(failureAlt: engineFailureAltAGL, headwindKts: windKts,  threshold: 0,                  turnDeg: 180) }
+    var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, headwindKts: 0,        threshold: thresholdCrossingHt, turnDeg: 180) }
+    var canReturnFullWithWind: Bool{ canReturn(failureAlt: engineFailureAltAGL, headwindKts: windKts,  threshold: thresholdCrossingHt, turnDeg: 180) }
 
 
     func minimumReturnAltitudeCustomThreshold(headwindKts: Double, threshold: Double, turnDeg: Double = 180.0) -> Double? {
@@ -704,6 +707,22 @@ struct ContentView: View {
                 Divider().background(Color(white: 0.15))
 
                 inputRow(
+                    label: "AIRPORT ELEVATION",
+                    sublabel: "Airport elevation MSL — used to convert engine failure altitude to AGL",
+                    value: "\(Int(airportElevFt)) ft MSL"
+                )
+                Slider(value: $airportElevFt, in: 0...12000, step: 100).tint(ac.accentColor)
+                    .onChange(of: airportElevFt) {
+                        // Keep engine failure alt above airport elevation
+                        if engineFailureAlt < airportElevFt {
+                            engineFailureAlt = airportElevFt
+                        }
+                    }
+                sliderEndLabels("Sea level (0 ft)", "12,000 ft MSL")
+
+                Divider().background(Color(white: 0.15))
+
+                inputRow(
                     label: "THRESHOLD CROSSING HEIGHT",
                     sublabel: "Minimum height AGL needed over the runway threshold to complete a safe landing flare",
                     value: "\(Int(thresholdCrossingHt)) ft AGL"
@@ -733,11 +752,13 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 6) {
             inputRow(
                 label: "ENGINE FAILURE ALTITUDE",
-                sublabel: "Your actual AGL height above the airport when the engine fails",
-                value: "\(Int(engineFailureAlt)) ft AGL"
+                sublabel: "Enter as MSL — AGL is calculated from airport elevation above",
+                value: "\(Int(engineFailureAlt)) ft MSL  (\(Int(engineFailureAltAGL)) ft AGL)"
             )
-            Slider(value: $engineFailureAlt, in: 100...6000, step: 100).tint(ac.accentColor)
-            sliderEndLabels("100 ft AGL", "6,000 ft AGL")
+            Slider(value: $engineFailureAlt,
+                   in: airportElevFt...airportElevFt + 6000,
+                   step: 100).tint(ac.accentColor)
+            sliderEndLabels("\(Int(airportElevFt)) ft MSL (0 AGL)", "\(Int(airportElevFt + 6000)) ft MSL")
         }
         .padding(14)
         .background(
@@ -759,7 +780,7 @@ struct ContentView: View {
                     windLabel: "NO WIND",
                     geoAlt: minReturnAltGeoNoWind,
                     fullAlt: minReturnAltNoWind,
-                    failureAlt: engineFailureAlt,
+                    failureAlt: engineFailureAltAGL,
                     color: ac.accentColor,
                     isWind: false
                 )
@@ -770,7 +791,7 @@ struct ContentView: View {
                         windLabel: "\(Int(windKts)) KTS HEADWIND ON DEPARTURE",
                         geoAlt: minReturnAltGeoWithWind,
                         fullAlt: minReturnAltWithWind,
-                        failureAlt: engineFailureAlt,
+                        failureAlt: engineFailureAltAGL,
                         color: Color(red: 0.48, green: 0.71, blue: 0.88),
                         isWind: true
                     )
@@ -833,7 +854,9 @@ struct ContentView: View {
             let altLost180   = rateOfDescentFpm * (180.0 / max(turnRateDegPerSec, 0.01)) / 60.0
             let gsReturn     = glide + hw
             let effRatio     = ac.glideRatio * (gsReturn / glide)
-            let glideAvail   = max(0, failureAlt - altLostRx - altLost180) * effRatio / 6076.12
+            let altForGlide  = max(0, failureAlt - altLostRx - altLost180 - thresholdCrossingHt)
+            let glideAvail   = altForGlide * effRatio / 6076.12
+            let glideMargin  = glideAvail - distBack
 
             // Distances card
             VStack(alignment: .leading, spacing: 8) {
@@ -893,6 +916,61 @@ struct ContentView: View {
             .background(RoundedRectangle(cornerRadius: 6)
                 .fill(Color(white: 0.05))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.10), lineWidth: 1)))
+
+            // Glide available vs needed
+            VStack(alignment: .leading, spacing: 8) {
+                Text("GLIDE RANGE AT ENGINE FAILURE (\(Int(failureAlt)) FT AGL)")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color.white)
+                    .kerning(1.0)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("NEEDED")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color.white)
+                        Text(String(format: "%.2f NM", distBack))
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundColor(.red.opacity(0.9))
+                        Text("\(Int((distBack * 6076.12).rounded())) ft")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Color.white)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .center, spacing: 2) {
+                        Text("AVAILABLE")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color.white)
+                        Text(String(format: "%.2f NM", glideAvail))
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundColor(.green.opacity(0.9))
+                        Text("\(Int((glideAvail * 6076.12).rounded())) ft")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Color.white)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("MARGIN")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color.white)
+                        Text(String(format: "%+.2f NM", glideMargin))
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundColor(glideMargin >= 0 ? .green : .red)
+                        Text("\(glideMargin >= 0 ? "+" : "")\(Int((glideMargin * 6076.12).rounded())) ft")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(glideMargin >= 0 ? .green.opacity(0.8) : .red.opacity(0.8))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 6)
+                .fill(glideMargin >= 0 ? Color.green.opacity(0.05) : Color.red.opacity(0.05))
+                .overlay(RoundedRectangle(cornerRadius: 6)
+                    .stroke(glideMargin >= 0 ? Color.green.opacity(0.25) : Color.red.opacity(0.25), lineWidth: 1)))
 
             // Geometric minimum (0 ft threshold)
             altRow(
