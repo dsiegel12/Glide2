@@ -14,9 +14,10 @@ struct ContentView: View {
     @State private var runwayLengthFt = 3000.0
     @State private var windKts = 0.0          // positive = headwind on departure
     @State private var thresholdCrossingHt = 25.0   // ft AGL at runway threshold
-    @State private var engineFailureAlt = 1500.0        // ft MSL at engine failure
-    @State private var airportElevFt   = 1000.0        // ft MSL airport elevation
-    @State private var airportElevText = "1000"        // text field binding
+    @State private var engineFailureAlt = 500.0         // ft MSL at engine failure (defaults to AGL when elev=0)
+    @State private var airportElevFt   = 0.0           // ft MSL airport elevation
+    @State private var airportElevText = ""            // text field binding
+    @FocusState private var airportElevFocused: Bool
     @State private var groundRollFt = 800.0              // ft of ground roll before liftoff
     @State private var climbRateFpm = 700.0              // fpm climb rate after liftoff
     @State private var climbSpeedKts = 73.0              // Vy in kts
@@ -719,11 +720,19 @@ struct ContentView: View {
                     HStack(spacing: 10) {
                         TextField("e.g. 1000", text: $airportElevText)
                             .keyboardType(.numberPad)
+                            .focused($airportElevFocused)
                             .foregroundColor(.white)
                             .padding(10)
                             .background(Color(white: 0.30))
                             .cornerRadius(8)
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.35), lineWidth: 1))
+                            .toolbar {
+                                ToolbarItemGroup(placement: .keyboard) {
+                                    Spacer()
+                                    Button("Done") { airportElevFocused = false }
+                                        .fontWeight(.semibold)
+                                }
+                            }
                             .onChange(of: airportElevText) {
                                 if let val = Double(airportElevText), val >= 0, val <= 14000 {
                                     airportElevFt = val
