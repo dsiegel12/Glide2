@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var thresholdCrossingHt = 25.0   // ft AGL at runway threshold
     @State private var engineFailureAlt = 1500.0        // ft MSL at engine failure
     @State private var airportElevFt   = 1000.0        // ft MSL airport elevation
+    @State private var airportElevText = "1000"        // text field binding
     @State private var groundRollFt = 800.0              // ft of ground roll before liftoff
     @State private var climbRateFpm = 700.0              // fpm climb rate after liftoff
     @State private var climbSpeedKts = 73.0              // Vy in kts
@@ -706,19 +707,36 @@ struct ContentView: View {
 
                 Divider().background(Color(white: 0.15))
 
-                inputRow(
-                    label: "AIRPORT ELEVATION",
-                    sublabel: "Airport elevation MSL — used to convert engine failure altitude to AGL",
-                    value: "\(Int(airportElevFt)) ft MSL"
-                )
-                Slider(value: $airportElevFt, in: 0...12000, step: 100).tint(ac.accentColor)
-                    .onChange(of: airportElevFt) {
-                        // Keep engine failure alt above airport elevation
-                        if engineFailureAlt < airportElevFt {
-                            engineFailureAlt = airportElevFt
-                        }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("AIRPORT ELEVATION")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(Color.white)
+                        .kerning(1.0)
+                    Text("Airport elevation MSL — used to convert engine failure altitude to AGL")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(Color.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        TextField("e.g. 1000", text: $airportElevText)
+                            .keyboardType(.numberPad)
+                            .foregroundColor(.white)
+                            .padding(10)
+                            .background(Color(white: 0.30))
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.35), lineWidth: 1))
+                            .onChange(of: airportElevText) {
+                                if let val = Double(airportElevText), val >= 0, val <= 14000 {
+                                    airportElevFt = val
+                                    if engineFailureAlt < airportElevFt {
+                                        engineFailureAlt = airportElevFt
+                                    }
+                                }
+                            }
+                        Text("ft MSL")
+                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .foregroundColor(ac.accentColor)
                     }
-                sliderEndLabels("Sea level (0 ft)", "12,000 ft MSL")
+                }
 
                 Divider().background(Color(white: 0.15))
 
