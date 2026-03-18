@@ -34,39 +34,18 @@ struct AddEditAircraftView: View {
             Form {
                 // MARK: Identity
                 Section("AIRCRAFT IDENTITY") {
-                    HStack {
-                        Text("Short ID")
-                        Spacer()
-                        TextField("e.g. PA28", text: $aircraftID)
-                            .multilineTextAlignment(.trailing)
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                    }
-                    HStack {
-                        Text("Full Name")
-                        Spacer()
-                        TextField("e.g. Piper Cherokee 180", text: $fullName)
-                            .multilineTextAlignment(.trailing)
-                            .autocorrectionDisabled()
-                    }
+                    inputField(label: "Short ID", placeholder: "e.g. PA28", text: $aircraftID,
+                               keyboard: .default, autocap: .characters)
+                    inputField(label: "Full Name", placeholder: "e.g. Piper Cherokee 180", text: $fullName,
+                               keyboard: .default, autocap: .words)
                 }
 
                 // MARK: Weight
                 Section("WEIGHT (LB)") {
-                    HStack {
-                        Text("Max Takeoff Weight")
-                        Spacer()
-                        TextField("e.g. 2400", text: $mtow)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                    }
-                    HStack {
-                        Text("Min Weight")
-                        Spacer()
-                        TextField("e.g. 1200", text: $minWeight)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                    }
+                    inputField(label: "Max Takeoff Weight", placeholder: "e.g. 2400", text: $mtow,
+                               keyboard: .decimalPad)
+                    inputField(label: "Min Weight", placeholder: "e.g. 1200", text: $minWeight,
+                               keyboard: .decimalPad)
                 }
 
                 // MARK: Performance
@@ -75,6 +54,7 @@ struct AddEditAircraftView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Text("Best Glide Speed")
+                                .foregroundColor(.white)
                             Spacer()
                             Picker("", selection: $glideSpeedUnit) {
                                 Text("KTS").tag(0)
@@ -88,42 +68,51 @@ struct AddEditAircraftView: View {
                             text: $glideSpeed
                         )
                         .keyboardType(.decimalPad)
+                        .foregroundColor(.white)
+                        .padding(10)
+                        .background(Color(white: 0.30))
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.35), lineWidth: 1))
                         if let other = glideSpeedConverted {
                             Text("= \(other)")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(Color(white: 0.7))
                         }
                     }
                     .padding(.vertical, 4)
+                    .listRowBackground(Color(white: 0.10))
 
                     // Glide ratio
-                    HStack {
-                        Text("Glide Ratio (L/D)")
-                        Spacer()
-                        TextField("e.g. 9.0", text: $glideRatio)
-                            .multilineTextAlignment(.trailing)
-                            .keyboardType(.decimalPad)
-                    }
+                    inputField(label: "Glide Ratio (L/D)", placeholder: "e.g. 9.0", text: $glideRatio,
+                               keyboard: .decimalPad)
 
                     // Stall speed — always kts input, mph shown below
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Stall Speed — level flight, MTOW")
+                            .foregroundColor(.white)
                         HStack {
                             TextField("e.g. 50", text: $stallSpeed)
                                 .keyboardType(.decimalPad)
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Color(white: 0.30))
+                                .cornerRadius(8)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.35), lineWidth: 1))
                             Text("KTS")
-                                .foregroundColor(.secondary)
+                                .foregroundColor(Color(white: 0.7))
+                                .font(.system(.subheadline, design: .monospaced))
                         }
                         if let v = Double(stallSpeed), v > 0 {
                             Text("= \(String(format: "%.1f", v * 1.15078)) mph")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(Color(white: 0.7))
                         }
                         Text("Bank-angle stall speeds are calculated automatically.")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(Color(white: 0.5))
                     }
                     .padding(.vertical, 4)
+                    .listRowBackground(Color(white: 0.10))
                 }
 
                 // MARK: Color
@@ -165,6 +154,7 @@ struct AddEditAircraftView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.never)
             .navigationTitle(isEditing ? "Edit Aircraft" : "Add Aircraft")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -179,6 +169,35 @@ struct AddEditAircraftView: View {
             .onAppear { prefill() }
         }
         .preferredColorScheme(.dark)
+        .interactiveDismissDisabled(true)
+    }
+
+    private func inputField(
+        label: String,
+        placeholder: String,
+        text: Binding<String>,
+        keyboard: UIKeyboardType = .default,
+        autocap: TextInputAutocapitalization = .never
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 13, design: .monospaced))
+                .foregroundColor(.white)
+            TextField(placeholder, text: text)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(autocap)
+                .autocorrectionDisabled()
+                .foregroundColor(.white)
+                .padding(10)
+                .background(Color(white: 0.30))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                )
+        }
+        .padding(.vertical, 4)
+        .listRowBackground(Color(white: 0.10))
     }
 
     private func prefill() {
@@ -232,8 +251,8 @@ struct AddEditAircraftView: View {
             colorHex:      colorHex
         )
 
-        if isEditing {
-            store.update(ac)
+        if isEditing, let oldID = existingAircraft?.id {
+            store.update(ac, replacingID: oldID)
         } else {
             store.add(ac)
         }

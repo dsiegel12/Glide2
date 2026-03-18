@@ -13,7 +13,7 @@ struct ContentView: View {
     @State private var reactionTimeSec = 3.0
     @State private var runwayLengthFt = 3000.0
     @State private var windKts = 0.0          // positive = headwind on departure
-    @State private var thresholdCrossingHt = 300.0  // ft AGL at runway threshold
+    @State private var thresholdCrossingHt = 25.0   // ft AGL at runway threshold
     @State private var engineFailureAlt = 500.0         // ft AGL at engine failure
     @State private var groundRollFt = 800.0              // ft of ground roll before liftoff
     @State private var climbRateFpm = 700.0              // fpm climb rate after liftoff
@@ -63,12 +63,8 @@ struct ContentView: View {
         let rGnd       = rAero * (gsTurn / glide)
         let longit     = distOut + rxnDist + halfRwyNM
 
-        if turnDeg >= 270.0 {
-            return longit + 2.0 * rGnd
-        } else {
-            let lateral = 2.0 * rGnd
-            return (longit * longit + lateral * lateral).squareRoot()
-        }
+        let lateral = 2.0 * rGnd
+        return (longit * longit + lateral * lateral).squareRoot()
     }
 
     func lateralOffsetNM(headwindKts: Double, failureAlt: Double, turnDeg: Double = 180.0) -> Double {
@@ -110,11 +106,6 @@ struct ContentView: View {
     var minReturnAltGeoNoWind: Double? { minimumReturnAltitudeCustomThreshold(headwindKts: 0,       threshold: 0, turnDeg: 180) }
     var minReturnAltGeoWithWind: Double?{ minimumReturnAltitudeCustomThreshold(headwindKts: windKts, threshold: 0, turnDeg: 180) }
 
-    // ── 270° turn ──────────────────────────────────────────────────────────────
-    var minReturn270AltNoWind: Double?    { minimumReturnAltitude(headwindKts: 0,       turnDeg: 270) }
-    var minReturn270AltWithWind: Double?  { minimumReturnAltitude(headwindKts: windKts, turnDeg: 270) }
-    var minReturn270AltGeoNoWind: Double? { minimumReturnAltitudeCustomThreshold(headwindKts: 0,       threshold: 0, turnDeg: 270) }
-    var minReturn270AltGeoWithWind: Double?{ minimumReturnAltitudeCustomThreshold(headwindKts: windKts, threshold: 0, turnDeg: 270) }
 
     func canReturn(failureAlt: Double, headwindKts: Double, threshold: Double, turnDeg: Double = 180.0) -> Bool {
         guard turnRateDegPerSec > 1.0 else { return false }
@@ -138,10 +129,6 @@ struct ContentView: View {
     var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAlt, headwindKts: 0,        threshold: thresholdCrossingHt, turnDeg: 180) }
     var canReturnFullWithWind: Bool{ canReturn(failureAlt: engineFailureAlt, headwindKts: windKts,  threshold: thresholdCrossingHt, turnDeg: 180) }
 
-    var canReturn270GeoNoWind: Bool   { canReturn(failureAlt: engineFailureAlt, headwindKts: 0,       threshold: 0,                  turnDeg: 270) }
-    var canReturn270GeoWithWind: Bool { canReturn(failureAlt: engineFailureAlt, headwindKts: windKts, threshold: 0,                  turnDeg: 270) }
-    var canReturn270FullNoWind: Bool  { canReturn(failureAlt: engineFailureAlt, headwindKts: 0,       threshold: thresholdCrossingHt, turnDeg: 270) }
-    var canReturn270FullWithWind: Bool{ canReturn(failureAlt: engineFailureAlt, headwindKts: windKts, threshold: thresholdCrossingHt, turnDeg: 270) }
 
     func minimumReturnAltitudeCustomThreshold(headwindKts: Double, threshold: Double, turnDeg: Double = 180.0) -> Double? {
         guard turnRateDegPerSec > 1.0 else { return nil }
@@ -514,7 +501,6 @@ struct ContentView: View {
             }
 
             turnRow(degrees: 180)
-            turnRow(degrees: 270)
             turnRow(degrees: 360)
 
             if bankDeg < 5 {
@@ -599,10 +585,13 @@ struct ContentView: View {
 
     var returnSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("MINIMUM RETURN ALTITUDE — ENGINE FAILURE ON DEPARTURE")
-                .font(.system(size: 13, design: .monospaced))
+            Text("MINIMUM RETURN ALTITUDE")
+                .font(.system(size: 22, weight: .heavy, design: .monospaced))
                 .foregroundColor(Color.white)
-                .kerning(1.5)
+                .kerning(1.2)
+            Text("ENGINE FAILURE ON DEPARTURE — 180° TURN BACK TO AIRPORT")
+                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .foregroundColor(ac.accentColor)
                 .fixedSize(horizontal: false, vertical: true)
             Text("The minimum height AGL above the airport at which engine failure occurs and a successful return to the runway is still possible.")
                 .font(.system(size: 14, design: .monospaced))
@@ -768,10 +757,8 @@ struct ContentView: View {
 
                 turnStrategyBlock(
                     windLabel: "NO WIND",
-                    geoAlt180: minReturnAltGeoNoWind,
-                    fullAlt180: minReturnAltNoWind,
-                    geoAlt270: minReturn270AltGeoNoWind,
-                    fullAlt270: minReturn270AltNoWind,
+                    geoAlt: minReturnAltGeoNoWind,
+                    fullAlt: minReturnAltNoWind,
                     failureAlt: engineFailureAlt,
                     color: ac.accentColor,
                     isWind: false
@@ -781,10 +768,8 @@ struct ContentView: View {
                     Divider().background(Color.white)
                     turnStrategyBlock(
                         windLabel: "\(Int(windKts)) KTS HEADWIND ON DEPARTURE",
-                        geoAlt180: minReturnAltGeoWithWind,
-                        fullAlt180: minReturnAltWithWind,
-                        geoAlt270: minReturn270AltGeoWithWind,
-                        fullAlt270: minReturn270AltWithWind,
+                        geoAlt: minReturnAltGeoWithWind,
+                        fullAlt: minReturnAltWithWind,
                         failureAlt: engineFailureAlt,
                         color: Color(red: 0.48, green: 0.71, blue: 0.88),
                         isWind: true
@@ -830,11 +815,10 @@ struct ContentView: View {
     }
 
     func turnStrategyBlock(windLabel: String,
-                           geoAlt180: Double?, fullAlt180: Double?,
-                           geoAlt270: Double?, fullAlt270: Double?,
+                           geoAlt: Double?, fullAlt: Double?,
                            failureAlt: Double, color: Color, isWind: Bool) -> some View {
-        let full180ok = isWind ? canReturnFullWithWind  : canReturnFullNoWind
-        let full270ok = isWind ? canReturn270FullWithWind : canReturn270FullNoWind
+        let fullOk = isWind ? canReturnFullWithWind : canReturnFullNoWind
+        let geoOk  = isWind ? canReturnGeoWithWind  : canReturnGeoNoWind
 
         return VStack(alignment: .leading, spacing: 12) {
             Text(windLabel)
@@ -842,25 +826,16 @@ struct ContentView: View {
                 .foregroundColor(color)
                 .kerning(1.0)
 
-            let hw = isWind ? windKts : 0.0
+            let hw           = isWind ? windKts : 0.0
             let distFromEnd  = distFromRunwayAtAlt(altFt: failureAlt, headwindKts: hw)
-            let distBack180  = glideDistNeededNM(headwindKts: hw, failureAlt: failureAlt, turnDeg: 180)
-            let distBack270  = glideDistNeededNM(headwindKts: hw, failureAlt: failureAlt, turnDeg: 270)
-            let vNMperSec    = glide / 3600.0
-            let turnRadAero  = turnRateDegPerSec > 0 ? vNMperSec / (turnRateDegPerSec * .pi / 180.0) : 0.0
-            let gsTurn       = max(glide - hw, 1.0)
-            let _ = turnRadAero * (gsTurn / glide)
-            let reactionNM   = distCoveredReactionNM(headwindKts: hw)
-            let runwayHalfNM = (runwayLengthFt / 2.0) / 6076.12
-            let _ = distFromEnd + reactionNM + runwayHalfNM
+            let distBack     = glideDistNeededNM(headwindKts: hw, failureAlt: failureAlt, turnDeg: 180)
             let altLostRx    = altLostReaction
             let altLost180   = rateOfDescentFpm * (180.0 / max(turnRateDegPerSec, 0.01)) / 60.0
-            let altLost270   = rateOfDescentFpm * (270.0 / max(turnRateDegPerSec, 0.01)) / 60.0
             let gsReturn     = glide + hw
             let effRatio     = ac.glideRatio * (gsReturn / glide)
-            let glideAvail180 = max(0, failureAlt - altLostRx - altLost180) * effRatio / 6076.12
-            let glideAvail270 = max(0, failureAlt - altLostRx - altLost270) * effRatio / 6076.12
+            let glideAvail   = max(0, failureAlt - altLostRx - altLost180) * effRatio / 6076.12
 
+            // Distances card
             VStack(alignment: .leading, spacing: 8) {
                 Text("DISTANCES AT ENGINE FAILURE (\(Int(failureAlt)) FT AGL)")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
@@ -874,7 +849,7 @@ struct ContentView: View {
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .foregroundColor(Color.white)
                             .kerning(0.8)
-                        Text("Climb distance from liftoff to engine failure. Ground roll is NOT included — it occurs behind the departure end of the runway.")
+                        Text("Climb distance from liftoff to engine failure. Ground roll occurs behind the departure end.")
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(Color.white)
                             .fixedSize(horizontal: false, vertical: true)
@@ -892,57 +867,25 @@ struct ContentView: View {
 
                 Divider().background(Color(white: 0.15))
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("BACK — GLIDE DISTANCE NEEDED TO REACH THRESHOLD")
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color.white)
-                        .kerning(0.8)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Distance the aircraft must glide after completing the turn to reach the runway threshold. Includes reaction distance + turn offset + half runway length.")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(Color.white)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("180° TURN")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .foregroundColor(Color.white)
-                            Text(String(format: "%.2f NM", distBack180))
-                                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                                .foregroundColor(ac.accentColor)
-                            Text("\(Int((distBack180 * 6076.12).rounded())) ft")
-                                .font(.system(size: 14, design: .monospaced))
-                                .foregroundColor(Color.white)
-                            Text("= √((2r)²+(out+rxn+½rwy)²)")
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(Color.white)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(white: 0.04))
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.10), lineWidth: 1)))
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("270° TURN")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .foregroundColor(Color.white)
-                            Text(String(format: "%.2f NM", distBack270))
-                                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                                .foregroundColor(ac.accentColor)
-                            Text("\(Int((distBack270 * 6076.12).rounded())) ft")
-                                .font(.system(size: 14, design: .monospaced))
-                                .foregroundColor(Color.white)
-                            Text("= (out+rxn+½rwy) + 2×radius")
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(Color.white)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 6)
-                            .fill(Color(white: 0.04))
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.10), lineWidth: 1)))
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("BACK — GLIDE DISTANCE TO THRESHOLD (180° TURN)")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color.white)
+                            .kerning(0.8)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("= √((2r)²+(out+rxn+½rwy)²)")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(Color.white)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(String(format: "%.2f NM", distBack))
+                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                            .foregroundColor(ac.accentColor)
+                        Text("\(Int((distBack * 6076.12).rounded())) ft")
+                            .font(.system(size: 14, design: .monospaced))
+                            .foregroundColor(Color.white)
                     }
                 }
             }
@@ -951,134 +894,7 @@ struct ContentView: View {
                 .fill(Color(white: 0.05))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(white: 0.10), lineWidth: 1)))
 
-            HStack {
-                Text("").frame(maxWidth: .infinity, alignment: .leading)
-                Text("180° TURN")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color.white)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                Text("270° TURN")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color.white)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
-
-            compareRow(
-                label: "Reach runway\n(0 ft — geometric min):",
-                alt180: geoAlt180,
-                alt270: geoAlt270,
-                ok180: isWind ? canReturnGeoWithWind : canReturnGeoNoWind,
-                ok270: isWind ? canReturn270GeoWithWind : canReturn270GeoNoWind,
-                glideAvail180: glideAvail180,
-                glideAvail270: glideAvail270,
-                glideReq180: distBack180,
-                glideReq270: distBack270,
-                color: color
-            )
-
-            compareRow(
-                label: "Reach \(Int(thresholdCrossingHt)) ft AGL\nat threshold:",
-                alt180: fullAlt180,
-                alt270: fullAlt270,
-                ok180: full180ok,
-                ok270: full270ok,
-                glideAvail180: glideAvail180,
-                glideAvail270: glideAvail270,
-                glideReq180: distBack180,
-                glideReq270: distBack270,
-                color: color
-            )
-
-            HStack(spacing: 10) {
-                Text("ENGINE FAILURE\nAT \(Int(failureAlt)) FT AGL")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Color.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                goNoGoBox(ok: full180ok)
-                    .frame(maxWidth: .infinity)
-                goNoGoBox(ok: full270ok)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    func compareRow(label: String,
-                    alt180: Double?, alt270: Double?,
-                    ok180: Bool, ok270: Bool,
-                    glideAvail180: Double, glideAvail270: Double,
-                    glideReq180: Double, glideReq270: Double,
-                    color: Color) -> some View {
-        CompareRow(label: label, alt180: alt180, alt270: alt270,
-                   ok180: ok180, ok270: ok270,
-                   glideAvail180: glideAvail180, glideAvail270: glideAvail270,
-                   glideReq180: glideReq180, glideReq270: glideReq270,
-                   color: color)
-    }
-
-    func glideDistLine(label: String, value: Double, ok: Bool, color: Color) -> some View {
-        GlideDistLine(label: label, value: value, ok: ok, color: color)
-    }
-
-    func goNoGoBox(ok: Bool) -> some View {
-        GoNoGoBox(ok: ok)
-    }
-
-    func windBlock(windLabel: String, geoAlt: Double?, fullAlt: Double?, failureAlt: Double, color: Color, isWind: Bool) -> some View {
-        let geoOk  = isWind ? canReturnGeoWithWind  : canReturnGeoNoWind
-        let fullOk = isWind ? canReturnFullWithWind : canReturnFullNoWind
-
-        return VStack(alignment: .leading, spacing: 10) {
-            Text(windLabel)
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                .foregroundColor(color)
-                .kerning(1.0)
-
-            let hw = isWind ? windKts : 0.0
-            let distOutNM = distFromRunwayAtAlt(altFt: failureAlt, headwindKts: hw)
-            let distBack180NM = glideDistNeededNM(headwindKts: hw, failureAlt: failureAlt, turnDeg: 180)
-            let distBack270NM = glideDistNeededNM(headwindKts: hw, failureAlt: failureAlt, turnDeg: 270)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("DEPARTURE POSITION AT \(Int(failureAlt)) FT AGL")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color.white)
-                    .kerning(1.0)
-                Text("\(String(format: "%.2f", distOutNM)) NM  (\(Int(distOutNM * 6076.12)) ft) past departure end of runway")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Color.white)
-
-                Text("DISTANCE BACK TO THRESHOLD")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color.white)
-                    .kerning(1.0)
-                    .padding(.top, 4)
-                HStack(spacing: 16) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("180° TURN")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color.white)
-                        Text("\(String(format: "%.2f", distBack180NM)) NM  (\(Int(distBack180NM * 6076.12)) ft)")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color.white)
-                    }
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("270° TURN")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color.white)
-                        Text("\(String(format: "%.2f", distBack270NM)) NM  (\(Int(distBack270NM * 6076.12)) ft)")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color.white)
-                    }
-                }
-            }
-            .padding(10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(white: 0.04))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.10), lineWidth: 1))
-            )
-
+            // Geometric minimum (0 ft threshold)
             altRow(
                 rowLabel: "REACH RUNWAY (0 ft at threshold)",
                 sublabel: "Geometrically possible to reach runway. No flare margin.",
@@ -1088,35 +904,34 @@ struct ContentView: View {
                 color: color
             )
 
+            // With threshold crossing height
             altRow(
                 rowLabel: "REACH THRESHOLD AT \(Int(thresholdCrossingHt)) FT AGL",
-                sublabel: "Arrives at threshold height with margin to flare and land.",
+                sublabel: "Arrives at threshold with margin to flare and land.",
                 altOpt: fullAlt,
                 failureAlt: failureAlt,
                 canMakeIt: fullOk,
                 color: color
             )
 
-            Divider().background(Color(white: 0.12))
-            HStack(alignment: .top) {
+            // GO / NO GO
+            HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("ENGINE FAILURE AT \(Int(failureAlt)) FT AGL")
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .font(.system(size: 13, design: .monospaced))
                         .foregroundColor(Color.white)
                     if let minAlt = fullAlt {
                         let delta = failureAlt - minAlt
                         Text(fullOk
-                             ? "+\(Int(delta)) ft above minimum (incl. \(Int(thresholdCrossingHt)) ft threshold reserve)"
-                             : "\(Int(abs(delta))) ft below minimum needed for safe return")
-                            .font(.system(size: 14, design: .monospaced))
+                             ? "+\(Int(delta)) ft above minimum"
+                             : "\(Int(abs(delta))) ft below minimum")
+                            .font(.system(size: 13, design: .monospaced))
                             .foregroundColor(fullOk ? .green : .red)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
-                Text(fullOk ? "GO" : "NO GO")
-                    .font(.system(size: 18, weight: .bold, design: .monospaced))
-                    .foregroundColor(fullOk ? .green : .red)
+                goNoGoBox(ok: fullOk)
+                    .frame(width: 100)
             }
             .padding(10)
             .background(
@@ -1126,6 +941,14 @@ struct ContentView: View {
                         .stroke(fullOk ? Color.green.opacity(0.35) : Color.red.opacity(0.35), lineWidth: 1))
             )
         }
+    }
+
+    func glideDistLine(label: String, value: Double, ok: Bool, color: Color) -> some View {
+        GlideDistLine(label: label, value: value, ok: ok, color: color)
+    }
+
+    func goNoGoBox(ok: Bool) -> some View {
+        GoNoGoBox(ok: ok)
     }
 
     func altRow(rowLabel: String, sublabel: String, altOpt: Double?, failureAlt: Double, canMakeIt: Bool, color: Color) -> some View {

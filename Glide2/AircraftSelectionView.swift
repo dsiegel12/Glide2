@@ -99,6 +99,23 @@ struct AircraftSelectionView: View {
 
                 Spacer()
 
+                if ac.isUserDefined {
+                    Button {
+                        aircraftToEdit = ac
+                    } label: {
+                        VStack(spacing: 2) {
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(ac.accentColor.opacity(0.85))
+                            Text("EDIT")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundColor(ac.accentColor.opacity(0.7))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                }
+
                 Image(systemName: "chevron.right")
                     .foregroundColor(.white.opacity(0.25))
                     .font(.system(size: 13))
