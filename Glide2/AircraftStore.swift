@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import Combine
 
 class AircraftStore: ObservableObject {
     @Published private(set) var aircraft: [Aircraft] = []
