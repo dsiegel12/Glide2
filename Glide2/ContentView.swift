@@ -6,21 +6,54 @@ struct ContentView: View {
     let aircraft: Aircraft
     let onChangeAircraft: () -> Void
 
-    @State private var weight = 2500.0
-    @State private var altFt = 3000.0
-    @State private var displayed = 76.0
-    @State private var bankDeg = 0.0
-    @State private var reactionTimeSec = 3.0
-    @State private var runwayLengthFt = 3000.0
-    @State private var windKts = 0.0          // positive = headwind on departure
-    @State private var thresholdCrossingHt = 25.0   // ft AGL at runway threshold
-    @State private var engineFailureAlt = 1500.0         // ft MSL at engine failure
-    @State private var airportElevFt   = 0.0           // ft MSL airport elevation
-    @State private var pilotCorrectionPct = 0.0        // 0-100% added to minimum return altitudes
-    @State private var groundRollFt = 800.0              // ft of ground roll before liftoff
-    @State private var climbRateFpm = 700.0              // fpm climb rate after liftoff
-    @State private var climbSpeedKts = 73.0              // Vy in kts
-    @State private var climbSpeedUnit = 0                // 0 = kts, 1 = mph
+    @State private var weight            = 2500.0
+    @State private var altFt             = 3000.0
+    @State private var bankDeg           = 0.0
+    @State private var reactionTimeSec   = 3.0
+    @State private var runwayLengthFt    = 3000.0
+    @State private var windKts           = 0.0
+    @State private var thresholdCrossingHt = 25.0
+    @State private var engineFailureAlt  = 1500.0
+    @State private var airportElevFt     = 0.0
+    @State private var pilotCorrectionPct = 0.0
+    @State private var groundRollFt      = 800.0
+    @State private var climbRateFpm      = 700.0
+    @State private var climbSpeedKts     = 73.0
+    @State private var climbSpeedUnit    = 0
+    @State private var displayed         = 76.0
+
+    // MARK: - Persistence
+    private struct SavedSettings: Codable {
+        var weight = 2500.0; var altFt = 3000.0; var bankDeg = 0.0
+        var reactionTimeSec = 3.0; var runwayLengthFt = 3000.0; var windKts = 0.0
+        var thresholdCrossingHt = 25.0; var engineFailureAlt = 1500.0
+        var airportElevFt = 0.0; var pilotCorrectionPct = 0.0
+        var groundRollFt = 800.0; var climbRateFpm = 700.0
+        var climbSpeedKts = 73.0; var climbSpeedUnit = 0
+    }
+    func loadSettings() {
+        guard let data = UserDefaults.standard.data(forKey: "flightSettings_\(ac.id)"),
+              let s = try? JSONDecoder().decode(SavedSettings.self, from: data) else { return }
+        weight = s.weight; altFt = s.altFt; bankDeg = s.bankDeg
+        reactionTimeSec = s.reactionTimeSec; runwayLengthFt = s.runwayLengthFt
+        windKts = s.windKts; thresholdCrossingHt = s.thresholdCrossingHt
+        engineFailureAlt = s.engineFailureAlt; airportElevFt = s.airportElevFt
+        pilotCorrectionPct = s.pilotCorrectionPct; groundRollFt = s.groundRollFt
+        climbRateFpm = s.climbRateFpm; climbSpeedKts = s.climbSpeedKts
+        climbSpeedUnit = s.climbSpeedUnit
+    }
+    func saveSettings() {
+        let s = SavedSettings(weight: weight, altFt: altFt, bankDeg: bankDeg,
+            reactionTimeSec: reactionTimeSec, runwayLengthFt: runwayLengthFt,
+            windKts: windKts, thresholdCrossingHt: thresholdCrossingHt,
+            engineFailureAlt: engineFailureAlt, airportElevFt: airportElevFt,
+            pilotCorrectionPct: pilotCorrectionPct, groundRollFt: groundRollFt,
+            climbRateFpm: climbRateFpm, climbSpeedKts: climbSpeedKts,
+            climbSpeedUnit: climbSpeedUnit)
+        if let data = try? JSONEncoder().encode(s) {
+            UserDefaults.standard.set(data, forKey: "flightSettings_\(ac.id)")
+        }
+    }
 
     var ac: Aircraft { aircraft }
     var glide: Double { ac.bestGlide(weight: weight) }
@@ -219,8 +252,15 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .onAppear {
-            weight = ((ac.minWeight + ac.mtow) / 2 / 50).rounded() * 50
-            displayed = glide
+            DispatchQueue.main.async {
+                loadSettings()
+                // clamp weight to valid range for this aircraft
+                weight = max(ac.minWeight, min(ac.mtow, weight))
+                displayed = glide
+            }
+        }
+        .onDisappear {
+            saveSettings()
         }
     }
 
@@ -349,7 +389,7 @@ struct ContentView: View {
     // MARK: Stall Speed vs Bank Angle
 
     var stallSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        return AnyView(VStack(alignment: .leading, spacing: 12) {
             Text("STALL SPEED VS BANK ANGLE")
                 .font(.system(size: 15, design: .monospaced))
                 .foregroundColor(Color.white)
@@ -418,7 +458,7 @@ struct ContentView: View {
             pohTable
         }
         .padding(16)
-        .background(CardBG(accent: ac.accentColor.opacity(0.18)))
+        .background(CardBG(accent: ac.accentColor.opacity(0.18))))
     }
 
     var pohTable: some View {
@@ -473,7 +513,7 @@ struct ContentView: View {
     // MARK: Turn Altitude Loss
 
     var turnSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        return AnyView(VStack(alignment: .leading, spacing: 12) {
             Text("ALTITUDE LOST IN GLIDE TURN")
                 .font(.system(size: 15, design: .monospaced))
                 .foregroundColor(Color.white)
@@ -517,7 +557,7 @@ struct ContentView: View {
             }
         }
         .padding(16)
-        .background(CardBG(accent: ac.accentColor.opacity(0.18)))
+        .background(CardBG(accent: ac.accentColor.opacity(0.18))))
     }
 
     func turnParam(label: String, value: String, color: Color) -> some View {
@@ -607,6 +647,7 @@ struct ContentView: View {
             returnFailureAltCard
             returnResultsCard
             returnPhaseBreakdown
+            summaryCard
             if bankDeg < 5 {
                 Text("⚠ SET A BANK ANGLE IN THE STALL SECTION ABOVE TO COMPUTE TURN PERFORMANCE")
                     .font(.system(size: 13, design: .monospaced))
@@ -616,6 +657,149 @@ struct ContentView: View {
         }
         .padding(16)
         .background(CardBG(accent: ac.accentColor.opacity(0.18)))
+    }
+
+    var summaryCard: some View {
+        let corrFactor  = 1.0 + pilotCorrectionPct / 100.0
+        let noWindAGL   = (minReturnAltNoWind   ?? 0) * corrFactor
+        let withWindAGL = (minReturnAltWithWind ?? 0) * corrFactor
+        let noWindMSL   = noWindAGL + airportElevFt
+        let withWindMSL = withWindAGL + airportElevFt
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("PILOT SUMMARY — \(ac.fullName.uppercased())")
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundColor(ac.accentColor)
+                .kerning(1.2)
+
+            Divider().background(Color(white: 0.2))
+
+            HStack {
+                Text("PARAMETER").frame(maxWidth: .infinity, alignment: .leading)
+                Text("VALUE").frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
+            .foregroundColor(Color(white: 0.5))
+
+            Divider().background(Color(white: 0.12))
+
+            Group {
+                sumRow("BEST GLIDE SPEED",
+                       "\(Int(glide.rounded())) kts  /  \(Int(glideMph.rounded())) mph")
+                sumRow("STALL SPEED (\(Int(bankDeg.rounded()))° BANK)",
+                       "\(Int(stall.kts.rounded())) kts  /  \(Int(stall.mph.rounded())) mph")
+                sumRow("BANK ANGLE", "\(Int(bankDeg.rounded()))°")
+                sumRow("CLIMB SPEED (Vy)",
+                       "\(Int(climbSpeedKts.rounded())) kts  /  \(Int((climbSpeedKts * 1.15078).rounded())) mph")
+                sumRow("CLIMB RATE", "\(Int(climbRateFpm.rounded())) fpm")
+            }
+
+            Divider().background(Color(white: 0.12))
+
+            Group {
+                if let _ = minReturnAltNoWind {
+                    sumRowAlt("MIN RETURN ALT — NO WIND",
+                              msl: noWindMSL, agl: noWindAGL, color: ac.accentColor)
+                } else {
+                    sumRow("MIN RETURN ALT — NO WIND", "> 6,000 ft AGL")
+                }
+                if windKts > 0 {
+                    if let _ = minReturnAltWithWind {
+                        sumRowAlt("MIN RETURN ALT — \(Int(windKts)) KTS HEADWIND",
+                                  msl: withWindMSL, agl: withWindAGL, color: ac.accentColor)
+                    } else {
+                        sumRow("MIN RETURN ALT — \(Int(windKts)) KTS HEADWIND", "> 6,000 ft AGL")
+                    }
+                }
+                if pilotCorrectionPct > 0 {
+                    Text("Altitudes include \(Int(pilotCorrectionPct))% pilot performance correction.")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(Color(white: 0.45))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(white: 0.05))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.25), lineWidth: 1))
+        )
+    }
+
+    func sumRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Color(white: 0.7))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(value)
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    func sumRowAlt(_ label: String, msl: Double, agl: Double, color: Color) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Color(white: 0.7))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(Int(msl.rounded())) ft MSL")
+                    .font(.system(size: 16, weight: .heavy, design: .monospaced))
+                    .foregroundColor(color)
+                Text("\(Int(agl.rounded())) ft AGL")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(Color(white: 0.6))
+            }
+        }
+    }
+
+    var airportElevationRow: some View {
+        AnyView(
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("AIRPORT ELEVATION")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Color.white)
+                            .kerning(1.0)
+                        Text("Airport elevation MSL — used to convert engine failure altitude to AGL")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Color.white)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    HStack(spacing: 0) {
+                        Button { airportElevFt = max(0, airportElevFt - 10) } label: {
+                            Image(systemName: "minus")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(ac.accentColor)
+                                .frame(width: 36, height: 36)
+                                .background(ac.accentColor.opacity(0.15))
+                        }
+                        Text("\(Int(airportElevFt))")
+                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .foregroundColor(ac.accentColor)
+                            .frame(minWidth: 52)
+                            .multilineTextAlignment(.center)
+                        Button { airportElevFt = min(14000, airportElevFt + 10) } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(ac.accentColor)
+                                .frame(width: 36, height: 36)
+                                .background(ac.accentColor.opacity(0.15))
+                        }
+                    }
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.3), lineWidth: 1))
+                }
+                Slider(value: $airportElevFt, in: 0...14000, step: 10).tint(ac.accentColor)
+                sliderEndLabels("Sea level", "14,000 ft MSL")
+            }
+        )
     }
 
     @ViewBuilder var returnInputsCard: some View {
@@ -643,6 +827,10 @@ struct ContentView: View {
                 )
                 Slider(value: $runwayLengthFt, in: 1000...10000, step: 100).tint(ac.accentColor)
                 sliderEndLabels("1,000 ft", "10,000 ft")
+
+                Divider().background(Color(white: 0.15))
+
+                airportElevationRow
 
                 Divider().background(Color(white: 0.15))
 
@@ -698,49 +886,6 @@ struct ContentView: View {
 
                 Divider().background(Color(white: 0.15))
 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("AIRPORT ELEVATION")
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundColor(Color.white)
-                                .kerning(1.0)
-                            Text("Airport elevation MSL — used to convert engine failure altitude to AGL")
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundColor(Color.white)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer()
-                        HStack(spacing: 0) {
-                            Button { airportElevFt = max(0, airportElevFt - 10) } label: {
-                                Image(systemName: "minus")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(ac.accentColor)
-                                    .frame(width: 36, height: 36)
-                                    .background(ac.accentColor.opacity(0.15))
-                            }
-                            Text("\(Int(airportElevFt))")
-                                .font(.system(size: 16, weight: .bold, design: .monospaced))
-                                .foregroundColor(ac.accentColor)
-                                .frame(minWidth: 52)
-                                .multilineTextAlignment(.center)
-                            Button { airportElevFt = min(14000, airportElevFt + 10) } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(ac.accentColor)
-                                    .frame(width: 36, height: 36)
-                                    .background(ac.accentColor.opacity(0.15))
-                            }
-                        }
-                        .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.3), lineWidth: 1))
-                    }
-                    Slider(value: $airportElevFt, in: 0...14000, step: 10).tint(ac.accentColor)
-                    sliderEndLabels("Sea level", "14,000 ft MSL")
-                }
-
-                Divider().background(Color(white: 0.15))
-
                 inputRow(
                     label: "THRESHOLD CROSSING HEIGHT",
                     sublabel: "Minimum height AGL needed over the runway threshold to complete a safe landing flare",
@@ -786,6 +931,35 @@ struct ContentView: View {
                    in: 0...15000,
                    step: 50).tint(engineFailureAltAGL > 0 ? ac.accentColor : .red)
             sliderEndLabels("0 ft MSL", "15,000 ft MSL")
+            HStack(spacing: 6) {
+                ForEach([-50, -5], id: \.self) { step in
+                    Button {
+                        engineFailureAlt = max(0, min(15000, engineFailureAlt + Double(step)))
+                    } label: {
+                        Text("\(step) ft")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(ac.accentColor)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(ac.accentColor.opacity(0.12))
+                            .cornerRadius(6)
+                    }
+                }
+                Spacer()
+                ForEach([5, 50], id: \.self) { step in
+                    Button {
+                        engineFailureAlt = max(0, min(15000, engineFailureAlt + Double(step)))
+                    } label: {
+                        Text("+\(step) ft")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(ac.accentColor)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(ac.accentColor.opacity(0.12))
+                            .cornerRadius(6)
+                    }
+                }
+            }
         }
         .padding(14)
         .background(
@@ -795,8 +969,8 @@ struct ContentView: View {
         )
     }
 
-    @ViewBuilder var returnResultsCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+    var returnResultsCard: some View {
+        return AnyView(VStack(alignment: .leading, spacing: 14) {
             Text("RESULTS — MINIMUM ENGINE FAILURE ALTITUDE AGL")
                 .font(.system(size: 13, design: .monospaced))
                 .foregroundColor(Color.white)
@@ -829,7 +1003,7 @@ struct ContentView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color(white: 0.05))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.25), lineWidth: 1))
-            )
+            ))
     }
 
     func inputRow(label: String, sublabel: String, value: String) -> some View {
@@ -868,7 +1042,7 @@ struct ContentView: View {
         let fullOk = isWind ? canReturnFullWithWind : canReturnFullNoWind
         let geoOk  = isWind ? canReturnGeoWithWind  : canReturnGeoNoWind
 
-        return VStack(alignment: .leading, spacing: 12) {
+        return AnyView(VStack(alignment: .leading, spacing: 12) {
             Text(windLabel)
                 .font(.system(size: 20, weight: .heavy, design: .monospaced))
                 .foregroundColor(color)
@@ -900,23 +1074,33 @@ struct ContentView: View {
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("OUT — DISTANCE PAST DEPARTURE END AT ENGINE FAILURE")
+                        Text(distFromEnd > 0
+                             ? "OUT — DISTANCE PAST DEPARTURE END AT ENGINE FAILURE"
+                             : "AIRCRAFT STILL OVER RUNWAY AT ENGINE FAILURE")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color.white)
+                            .foregroundColor(distFromEnd > 0 ? Color.white : ac.accentColor)
                             .kerning(0.8)
-                        Text("How far the aircraft has travelled beyond the departure end of the runway when the engine fails.")
+                        Text(distFromEnd > 0
+                             ? "How far the aircraft has travelled beyond the departure end of the runway when the engine fails."
+                             : "Engine failure occurs before reaching the departure end. Aircraft can turn back and land within the remaining runway.")
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(Color.white)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text(String(format: "%.2f NM", distFromEnd))
-                            .font(.system(size: 18, weight: .bold, design: .monospaced))
-                            .foregroundColor(ac.accentColor)
-                        Text("\(Int((distFromEnd * 6076.12).rounded())) ft")
-                            .font(.system(size: 14, design: .monospaced))
-                            .foregroundColor(Color.white)
+                        if distFromEnd > 0 {
+                            Text(String(format: "%.2f NM", distFromEnd))
+                                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                .foregroundColor(ac.accentColor)
+                            Text("\(Int((distFromEnd * 6076.12).rounded())) ft")
+                                .font(.system(size: 14, design: .monospaced))
+                                .foregroundColor(Color.white)
+                        } else {
+                            Text("—")
+                                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color(white: 0.5))
+                        }
                     }
                 }
 
@@ -924,14 +1108,19 @@ struct ContentView: View {
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("BACK — GLIDE DISTANCE TO THRESHOLD (180° TURN)")
+                        Text(distFromEnd > 0
+                             ? "BACK — GLIDE DISTANCE TO DEPARTURE END (180° TURN)"
+                             : "LATERAL ALIGNMENT — DISTANCE TO RE-ALIGN WITH RUNWAY CENTERLINE")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .foregroundColor(Color.white)
                             .kerning(0.8)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text("= √((2r)²+(out+rxn+½rwy)²)")
+                        Text(distFromEnd > 0
+                             ? "Diagonal glide distance needed to reach the departure end after completing the 180° turn. = √((2r)²+(out+rxn)²)"
+                             : "Aircraft is over the runway — only needs to cover the lateral turn offset (2 × turn radius) to re-align with the centerline.")
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(Color.white)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 1) {
@@ -1050,7 +1239,7 @@ struct ContentView: View {
                     .overlay(RoundedRectangle(cornerRadius: 8)
                         .stroke(fullOk ? Color.green.opacity(0.35) : Color.red.opacity(0.35), lineWidth: 1))
             )
-        }
+        })
     }
 
     func glideDistLine(label: String, value: Double, ok: Bool, color: Color) -> some View {
@@ -1062,7 +1251,7 @@ struct ContentView: View {
     }
 
     func altRow(rowLabel: String, sublabel: String, altOpt: Double?, failureAlt: Double, canMakeIt: Bool, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        return AnyView(VStack(alignment: .leading, spacing: 8) {
             // Labels + minimum altitude
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -1133,7 +1322,7 @@ struct ContentView: View {
                 .fill(canMakeIt ? Color(white: 0.04) : Color.red.opacity(0.05))
                 .overlay(RoundedRectangle(cornerRadius: 7)
                     .stroke(canMakeIt ? Color(white: 0.10) : Color.red.opacity(0.25), lineWidth: 1))
-        )
+        ))
     }
 
     var returnPhaseBreakdown: some View {
@@ -1215,7 +1404,7 @@ struct ContentView: View {
     }
 
     func phaseRow(number: String, title: String, detail: String, altLabel: String, lostLabel: String, color: Color) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        return AnyView(HStack(alignment: .top, spacing: 10) {
             Text(number)
                 .font(.system(size: 15, weight: .bold, design: .monospaced))
                 .foregroundColor(color)
@@ -1241,7 +1430,7 @@ struct ContentView: View {
                     .foregroundColor(.red.opacity(0.85))
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 6))
     }
 
 
