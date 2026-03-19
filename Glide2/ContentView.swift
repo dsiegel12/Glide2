@@ -14,10 +14,9 @@ struct ContentView: View {
     @State private var runwayLengthFt = 3000.0
     @State private var windKts = 0.0          // positive = headwind on departure
     @State private var thresholdCrossingHt = 25.0   // ft AGL at runway threshold
-    @State private var engineFailureAlt = 500.0         // ft MSL at engine failure (defaults to AGL when elev=0)
+    @State private var engineFailureAlt = 1500.0         // ft MSL at engine failure
     @State private var airportElevFt   = 0.0           // ft MSL airport elevation
-    @State private var airportElevText = ""            // text field binding
-    @FocusState private var airportElevFocused: Bool
+    @State private var pilotCorrectionPct = 0.0        // 0-100% added to minimum return altitudes
     @State private var groundRollFt = 800.0              // ft of ground roll before liftoff
     @State private var climbRateFpm = 700.0              // fpm climb rate after liftoff
     @State private var climbSpeedKts = 73.0              // Vy in kts
@@ -35,9 +34,7 @@ struct ContentView: View {
         return 200.0 * reactionTimeSec / 60.0
     }
 
-    var climbSpeedKtsNorm: Double {
-        climbSpeedUnit == 1 ? climbSpeedKts / 1.15078 : climbSpeedKts
-    }
+    var climbSpeedKtsNorm: Double { climbSpeedKts }
 
     func distFromRunwayAtAlt(altFt: Double, headwindKts: Double) -> Double {
         let climbGroundSpeedKts = max(climbSpeedKtsNorm - headwindKts, 1.0)
@@ -59,12 +56,15 @@ struct ContentView: View {
         guard turnRateDegPerSec > 1.0 else { return 999.0 }
         let distOut    = distFromRunwayAtAlt(altFt: failureAlt, headwindKts: headwindKts)
         let rxnDist    = distCoveredReactionNM(headwindKts: headwindKts)
-        let halfRwyNM  = runwayLengthFt / 2.0 / 6076.12
+        let runwayLengthNM = runwayLengthFt / 6076.12
+        let groundRollNM   = groundRollFt / 6076.12
         let vNMperSec  = glide / 3600.0
         let rAero      = vNMperSec / (turnRateDegPerSec * .pi / 180.0)
         let gsTurn     = max(glide - headwindKts, 1.0)
         let rGnd       = rAero * (gsTurn / glide)
-        let longit     = distOut + rxnDist + halfRwyNM
+        // Only the distance past the departure end matters longitudinally;
+        // if still over the runway, lateral offset (turn radius) is the sole constraint.
+        let longit     = max(0, groundRollNM + distOut + rxnDist - runwayLengthNM)
 
         let lateral = 2.0 * rGnd
         return (longit * longit + lateral * lateral).squareRoot()
@@ -128,6 +128,7 @@ struct ContentView: View {
     }
 
     var engineFailureAltAGL: Double { max(0, engineFailureAlt - airportElevFt) }
+    var engineFailureAltMSL: Double { engineFailureAlt }
 
     var canReturnGeoNoWind: Bool   { canReturn(failureAlt: engineFailureAltAGL, headwindKts: 0,        threshold: 0,                  turnDeg: 180) }
     var canReturnGeoWithWind: Bool { canReturn(failureAlt: engineFailureAltAGL, headwindKts: windKts,  threshold: 0,                  turnDeg: 180) }
@@ -437,8 +438,8 @@ struct ContentView: View {
                 Text("STALL MPH")
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .font(.system(size: 14, design: .monospaced))
-            .foregroundColor(Color.white)
+            .font(.system(size: 14, weight: .bold, design: .monospaced))
+            .foregroundColor(ac.accentColor)
             .padding(.bottom, 4)
 
             ForEach([0.0, 20.0, 40.0, 60.0], id: \.self) { deg in
@@ -667,26 +668,15 @@ struct ContentView: View {
                                 .foregroundColor(Color.white)
                         }
                         Spacer()
-                        Picker("", selection: $climbSpeedUnit) {
-                            Text("KTS").tag(0)
-                            Text("MPH").tag(1)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 90)
                     }
                     HStack {
                         Spacer()
-                        Text(climbSpeedUnit == 0
-                             ? "\(Int(climbSpeedKts)) kts"
-                             : "\(Int(climbSpeedKts)) mph")
+                        Text("\(Int(climbSpeedKts)) kts / \(Int((climbSpeedKts * 1.15078).rounded())) mph")
                             .font(.system(size: 18, weight: .bold, design: .monospaced))
                             .foregroundColor(ac.accentColor)
                     }
                     Slider(value: $climbSpeedKts, in: 50...150, step: 1).tint(ac.accentColor)
-                    sliderEndLabels(
-                        climbSpeedUnit == 0 ? "50 kts" : "50 mph",
-                        climbSpeedUnit == 0 ? "150 kts" : "150 mph"
-                    )
+                    sliderEndLabels("50 kts", "150 kts")
                 }
 
                 Divider().background(Color(white: 0.15))
@@ -709,42 +699,44 @@ struct ContentView: View {
                 Divider().background(Color(white: 0.15))
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("AIRPORT ELEVATION")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(Color.white)
-                        .kerning(1.0)
-                    Text("Airport elevation MSL — used to convert engine failure altitude to AGL")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(Color.white)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        TextField("e.g. 1000", text: $airportElevText)
-                            .keyboardType(.numberPad)
-                            .focused($airportElevFocused)
-                            .foregroundColor(.white)
-                            .padding(10)
-                            .background(Color(white: 0.30))
-                            .cornerRadius(8)
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.35), lineWidth: 1))
-                            .toolbar {
-                                ToolbarItemGroup(placement: .keyboard) {
-                                    Spacer()
-                                    Button("Done") { airportElevFocused = false }
-                                        .fontWeight(.semibold)
-                                }
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("AIRPORT ELEVATION")
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundColor(Color.white)
+                                .kerning(1.0)
+                            Text("Airport elevation MSL — used to convert engine failure altitude to AGL")
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundColor(Color.white)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        HStack(spacing: 0) {
+                            Button { airportElevFt = max(0, airportElevFt - 10) } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(ac.accentColor)
+                                    .frame(width: 36, height: 36)
+                                    .background(ac.accentColor.opacity(0.15))
                             }
-                            .onChange(of: airportElevText) {
-                                if let val = Double(airportElevText), val >= 0, val <= 14000 {
-                                    airportElevFt = val
-                                    if engineFailureAlt < airportElevFt {
-                                        engineFailureAlt = airportElevFt
-                                    }
-                                }
+                            Text("\(Int(airportElevFt))")
+                                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                .foregroundColor(ac.accentColor)
+                                .frame(minWidth: 52)
+                                .multilineTextAlignment(.center)
+                            Button { airportElevFt = min(14000, airportElevFt + 10) } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(ac.accentColor)
+                                    .frame(width: 36, height: 36)
+                                    .background(ac.accentColor.opacity(0.15))
                             }
-                        Text("ft MSL")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundColor(ac.accentColor)
+                        }
+                        .cornerRadius(8)
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.3), lineWidth: 1))
                     }
+                    Slider(value: $airportElevFt, in: 0...14000, step: 10).tint(ac.accentColor)
+                    sliderEndLabels("Sea level", "14,000 ft MSL")
                 }
 
                 Divider().background(Color(white: 0.15))
@@ -780,12 +772,20 @@ struct ContentView: View {
             inputRow(
                 label: "ENGINE FAILURE ALTITUDE",
                 sublabel: "Enter as MSL — AGL is calculated from airport elevation above",
-                value: "\(Int(engineFailureAlt)) ft MSL  (\(Int(engineFailureAltAGL)) ft AGL)"
+                value: engineFailureAltAGL > 0
+                    ? "\(Int(engineFailureAltMSL)) ft MSL  (\(Int(engineFailureAltAGL)) ft AGL)"
+                    : "\(Int(engineFailureAltMSL)) ft MSL  (below airport elevation)"
             )
+            if engineFailureAltAGL <= 0 {
+                Text("⚠ MSL altitude is at or below airport elevation — increase the slider")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Slider(value: $engineFailureAlt,
-                   in: airportElevFt...airportElevFt + 6000,
-                   step: 100).tint(ac.accentColor)
-            sliderEndLabels("\(Int(airportElevFt)) ft MSL (0 AGL)", "\(Int(airportElevFt + 6000)) ft MSL")
+                   in: 0...15000,
+                   step: 50).tint(engineFailureAltAGL > 0 ? ac.accentColor : .red)
+            sliderEndLabels("0 ft MSL", "15,000 ft MSL")
         }
         .padding(14)
         .background(
@@ -870,12 +870,17 @@ struct ContentView: View {
 
         return VStack(alignment: .leading, spacing: 12) {
             Text(windLabel)
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .font(.system(size: 20, weight: .heavy, design: .monospaced))
                 .foregroundColor(color)
-                .kerning(1.0)
+                .kerning(1.2)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(color.opacity(0.12))
+                .cornerRadius(7)
 
             let hw           = isWind ? windKts : 0.0
-            let distFromEnd  = distFromRunwayAtAlt(altFt: failureAlt, headwindKts: hw)
+            let climbDistNM  = distFromRunwayAtAlt(altFt: failureAlt, headwindKts: hw)
+            let distFromEnd  = max(0.0, groundRollFt / 6076.12 + climbDistNM - runwayLengthFt / 6076.12)
             let distBack     = glideDistNeededNM(headwindKts: hw, failureAlt: failureAlt, turnDeg: 180)
             let altLostRx    = altLostReaction
             let altLost180   = rateOfDescentFpm * (180.0 / max(turnRateDegPerSec, 0.01)) / 60.0
@@ -887,7 +892,7 @@ struct ContentView: View {
 
             // Distances card
             VStack(alignment: .leading, spacing: 8) {
-                Text("DISTANCES AT ENGINE FAILURE (\(Int(failureAlt)) FT AGL)")
+                Text("DISTANCES AT ENGINE FAILURE (\(Int(failureAlt + airportElevFt)) FT MSL / \(Int(failureAlt)) FT AGL)")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundColor(Color.white)
                     .kerning(1.0)
@@ -895,11 +900,11 @@ struct ContentView: View {
 
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("OUT — PAST DEPARTURE END OF RUNWAY")
+                        Text("OUT — DISTANCE PAST DEPARTURE END AT ENGINE FAILURE")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .foregroundColor(Color.white)
                             .kerning(0.8)
-                        Text("Climb distance from liftoff to engine failure. Ground roll occurs behind the departure end.")
+                        Text("How far the aircraft has travelled beyond the departure end of the runway when the engine fails.")
                             .font(.system(size: 12, design: .monospaced))
                             .foregroundColor(Color.white)
                             .fixedSize(horizontal: false, vertical: true)
@@ -946,7 +951,7 @@ struct ContentView: View {
 
             // Glide available vs needed
             VStack(alignment: .leading, spacing: 8) {
-                Text("GLIDE RANGE AT ENGINE FAILURE (\(Int(failureAlt)) FT AGL)")
+                Text("GLIDE RANGE AT ENGINE FAILURE (\(Int(failureAlt + airportElevFt)) FT MSL / \(Int(failureAlt)) FT AGL)")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundColor(Color.white)
                     .kerning(1.0)
@@ -1057,34 +1062,69 @@ struct ContentView: View {
     }
 
     func altRow(rowLabel: String, sublabel: String, altOpt: Double?, failureAlt: Double, canMakeIt: Bool, color: Color) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(rowLabel)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(Color.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(sublabel)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(Color.white)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            if let alt = altOpt {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("MIN: \(Int((alt + airportElevFt).rounded())) ft MSL")
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
-                        .foregroundColor(canMakeIt ? color : .red)
-                    Text("\(Int(alt.rounded())) ft AGL")
-                        .font(.system(size: 14, design: .monospaced))
-                        .foregroundColor(canMakeIt ? color.opacity(0.7) : .red.opacity(0.7))
-                    Text(canMakeIt ? "✓ POSSIBLE" : "✗ NOT POSSIBLE")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundColor(canMakeIt ? .green : .red)
+        VStack(alignment: .leading, spacing: 8) {
+            // Labels + minimum altitude
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(rowLabel)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(Color.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(sublabel)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color.white)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-            } else {
-                Text("MIN: >6,000 ft AGL")
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
-                    .foregroundColor(.red)
+                Spacer()
+                if let alt = altOpt {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("\(Int((alt + airportElevFt).rounded())) ft MSL")
+                            .font(.system(size: 30, weight: .heavy, design: .monospaced))
+                            .foregroundColor(canMakeIt ? color : .red)
+                        Text("\(Int(alt.rounded())) ft AGL")
+                            .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                            .foregroundColor(canMakeIt ? color.opacity(0.75) : .red.opacity(0.75))
+                        Text(canMakeIt ? "✓ POSSIBLE" : "✗ NOT POSSIBLE")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(canMakeIt ? .green : .red)
+                    }
+                } else {
+                    Text(">6,000 ft AGL")
+                        .font(.system(size: 30, weight: .heavy, design: .monospaced))
+                        .foregroundColor(.red)
+                }
+            }
+
+            // Pilot performance correction
+            if let alt = altOpt {
+                let corrAGL = alt * (1 + pilotCorrectionPct / 100)
+                let corrMSL = corrAGL + airportElevFt
+                Divider().background(Color(white: 0.18))
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("PILOT CORRECTION: \(Int(pilotCorrectionPct))%")
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Color.orange)
+                        Text("Adds margin for imperfect execution")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.6))
+                        Slider(value: $pilotCorrectionPct, in: 0...100, step: 5)
+                            .tint(.orange)
+                            .frame(maxWidth: 200)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("\(Int(corrMSL.rounded())) ft MSL")
+                            .font(.system(size: 30, weight: .heavy, design: .monospaced))
+                            .foregroundColor(.orange)
+                        Text("\(Int(corrAGL.rounded())) ft AGL")
+                            .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Color.orange.opacity(0.75))
+                        Text("WITH CORRECTION")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.orange)
+                    }
+                }
             }
         }
         .padding(10)

@@ -169,16 +169,16 @@ struct SpeedPair: View {
                     .foregroundColor(color)
                 Text("KTS")
                     .font(.system(size: 15, design: .monospaced))
-                    .foregroundColor(color.opacity(0.6))
+                    .foregroundColor(color)
                     .padding(.bottom, 3)
             }
             HStack(alignment: .lastTextBaseline, spacing: 4) {
                 Text("\(Int(mph.rounded()))")
                     .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                    .foregroundColor(color.opacity(0.75))
+                    .foregroundColor(color)
                 Text("MPH")
                     .font(.system(size: 14, design: .monospaced))
-                    .foregroundColor(color.opacity(0.45))
+                    .foregroundColor(color)
                     .padding(.bottom, 2)
             }
         }
