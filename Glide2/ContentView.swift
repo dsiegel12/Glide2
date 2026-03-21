@@ -21,6 +21,8 @@ struct ContentView: View {
     @State private var climbSpeedKts     = 73.0
     @State private var climbSpeedUnit    = 0
     @State private var displayed         = 76.0
+    @State private var oatC              = 15.0   // Outside air temp in °C
+    @State private var tempUnit          = 0       // 0 = °C, 1 = °F
 
     // MARK: - Persistence
     private struct SavedSettings: Codable {
@@ -30,6 +32,7 @@ struct ContentView: View {
         var airportElevFt = 0.0; var pilotCorrectionPct = 0.0
         var groundRollFt = 800.0; var climbRateFpm = 700.0
         var climbSpeedKts = 73.0; var climbSpeedUnit = 0
+        var oatC: Double? = nil; var tempUnit: Int? = nil
     }
     func loadSettings() {
         guard let data = UserDefaults.standard.data(forKey: "flightSettings_\(ac.id)"),
@@ -41,6 +44,7 @@ struct ContentView: View {
         pilotCorrectionPct = s.pilotCorrectionPct; groundRollFt = s.groundRollFt
         climbRateFpm = s.climbRateFpm; climbSpeedKts = s.climbSpeedKts
         climbSpeedUnit = s.climbSpeedUnit
+        oatC = s.oatC ?? 15.0; tempUnit = s.tempUnit ?? 0
     }
     func saveSettings() {
         let s = SavedSettings(weight: weight, altFt: altFt, bankDeg: bankDeg,
@@ -49,7 +53,7 @@ struct ContentView: View {
             engineFailureAlt: engineFailureAlt, airportElevFt: airportElevFt,
             pilotCorrectionPct: pilotCorrectionPct, groundRollFt: groundRollFt,
             climbRateFpm: climbRateFpm, climbSpeedKts: climbSpeedKts,
-            climbSpeedUnit: climbSpeedUnit)
+            climbSpeedUnit: climbSpeedUnit, oatC: oatC, tempUnit: tempUnit)
         if let data = try? JSONEncoder().encode(s) {
             UserDefaults.standard.set(data, forKey: "flightSettings_\(ac.id)")
         }
@@ -69,9 +73,21 @@ struct ContentView: View {
 
     var climbSpeedKtsNorm: Double { climbSpeedKts }
 
+    // ── Density Altitude ─────────────────────────────────────────────────────
+    var oatF: Double { oatC * 9.0 / 5.0 + 32.0 }
+    var densityAltFt: Double {
+        let isaTempC = 15.0 - 1.98 * (airportElevFt / 1000.0)
+        return airportElevFt + 120.0 * (oatC - isaTempC)
+    }
+    /// TAS = IAS × tasIasRatio (≈2% per 1,000 ft density altitude)
+    var tasIasRatio: Double { max(1.0, 1.0 + 0.02 * max(0, densityAltFt) / 1000.0) }
+    /// POH climb rate degraded ~3% per 1,000 ft density altitude
+    var correctedClimbRateFpm: Double { max(50.0, climbRateFpm * (1.0 - 0.03 * max(0, densityAltFt) / 1000.0)) }
+
     func distFromRunwayAtAlt(altFt: Double, headwindKts: Double) -> Double {
-        let climbGroundSpeedKts = max(climbSpeedKtsNorm - headwindKts, 1.0)
-        let climbGradientFtPerNM = max(climbRateFpm, 1.0) / climbGroundSpeedKts * 6076.12 / 60.0
+        let tasClimb = climbSpeedKtsNorm * tasIasRatio
+        let climbGroundSpeedKts = max(tasClimb - headwindKts, 1.0)
+        let climbGradientFtPerNM = max(correctedClimbRateFpm, 1.0) / climbGroundSpeedKts * 6076.12 / 60.0
         guard climbGradientFtPerNM > 0 else { return 0 }
         return altFt / climbGradientFtPerNM
     }
@@ -81,7 +97,8 @@ struct ContentView: View {
     }
 
     func distCoveredReactionNM(headwindKts: Double) -> Double {
-        let groundSpeedKts = max(climbSpeedKtsNorm - headwindKts, 1.0)
+        let tasClimb = climbSpeedKtsNorm * tasIasRatio
+        let groundSpeedKts = max(tasClimb - headwindKts, 1.0)
         return groundSpeedKts * (reactionTimeSec / 3600.0)
     }
 
@@ -110,7 +127,8 @@ struct ContentView: View {
 
     func glideDistReturnNM(altitudeFt: Double, headwindKts: Double) -> Double {
         let tailwindKts = headwindKts
-        let groundSpeedReturn = glide + tailwindKts
+        let tasAtGlide = glide * tasIasRatio
+        let groundSpeedReturn = tasAtGlide + tailwindKts
         let effectiveRatio = ac.glideRatio * (groundSpeedReturn / glide)
         return altitudeFt * effectiveRatio / 6076.12
     }
@@ -191,13 +209,13 @@ struct ContentView: View {
 
     // ── Rate of Descent ───────────────────────────────────────────────────────
     var rateOfDescentFpm: Double {
-        let speedFps = glide * 6076.12 / 3600.0
+        let speedFps = glide * tasIasRatio * 6076.12 / 3600.0
         return speedFps * 60.0 / ac.glideRatio
     }
 
     var turnRateDegPerSec: Double {
         guard bankDeg > 5 else { return 0.0 }
-        let vFps = glide * 6076.12 / 3600.0
+        let vFps = glide * tasIasRatio * 6076.12 / 3600.0
         let rate = (32.174 * tan(bankDeg * .pi / 180)) / vFps
         return rate * 180.0 / .pi
     }
@@ -691,7 +709,9 @@ struct ContentView: View {
                 sumRow("BANK ANGLE", "\(Int(bankDeg.rounded()))°")
                 sumRow("CLIMB SPEED (Vy)",
                        "\(Int(climbSpeedKts.rounded())) kts  /  \(Int((climbSpeedKts * 1.15078).rounded())) mph")
-                sumRow("CLIMB RATE", "\(Int(climbRateFpm.rounded())) fpm")
+                sumRow("CLIMB RATE (POH)", "\(Int(climbRateFpm.rounded())) fpm")
+                sumRow("DENSITY ALTITUDE", String(format: "%d ft", Int(densityAltFt.rounded())))
+                sumRow("CORRECTED CLIMB RATE", String(format: "%d fpm", Int(correctedClimbRateFpm.rounded())))
             }
 
             Divider().background(Color(white: 0.12))
@@ -755,6 +775,78 @@ struct ContentView: View {
                     .foregroundColor(Color(white: 0.6))
             }
         }
+    }
+
+    var atmosphericRow: some View {
+        AnyView(
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("OUTSIDE AIR TEMPERATURE")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(Color.white)
+                            .kerning(1.0)
+                        Text("Used to calculate density altitude and performance corrections")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.6))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Picker("", selection: $tempUnit) {
+                        Text("°C").tag(0)
+                        Text("°F").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 80)
+                }
+
+                let tempBinding = Binding<Double>(
+                    get: { tempUnit == 0 ? oatC : oatF },
+                    set: { val in
+                        if tempUnit == 0 { oatC = val }
+                        else { oatC = (val - 32.0) * 5.0 / 9.0 }
+                    }
+                )
+                let lo: Double = tempUnit == 0 ? -40 : -40
+                let hi: Double = tempUnit == 0 ?  50 : 122
+                let displayVal = tempUnit == 0
+                    ? String(format: "%.0f°C  (%.0f°F)", oatC, oatF)
+                    : String(format: "%.0f°F  (%.0f°C)", oatF, oatC)
+
+                Text(displayVal)
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundColor(ac.accentColor)
+
+                Slider(value: tempBinding, in: lo...hi, step: 1).tint(ac.accentColor)
+                sliderEndLabels(
+                    tempUnit == 0 ? "-40°C" : "-40°F",
+                    tempUnit == 0 ?  "50°C" : "122°F"
+                )
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("DENSITY ALTITUDE")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color(white: 0.5))
+                        let daColor: Color = densityAltFt > airportElevFt + 2000 ? .orange :
+                                             densityAltFt > airportElevFt + 1000 ? .yellow : .green
+                        Text(String(format: "%d ft", Int(densityAltFt.rounded())))
+                            .font(.system(size: 20, weight: .heavy, design: .monospaced))
+                            .foregroundColor(daColor)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("CORRECTED CLIMB RATE")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(Color(white: 0.5))
+                        Text(String(format: "%d fpm", Int(correctedClimbRateFpm.rounded())))
+                            .font(.system(size: 20, weight: .heavy, design: .monospaced))
+                            .foregroundColor(ac.accentColor)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        )
     }
 
     var airportElevationRow: some View {
@@ -831,6 +923,10 @@ struct ContentView: View {
                 Divider().background(Color(white: 0.15))
 
                 airportElevationRow
+
+                Divider().background(Color(white: 0.15))
+
+                atmosphericRow
 
                 Divider().background(Color(white: 0.15))
 
