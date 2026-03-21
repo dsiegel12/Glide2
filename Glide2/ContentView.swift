@@ -79,10 +79,10 @@ struct ContentView: View {
         let isaTempC = 15.0 - 1.98 * (airportElevFt / 1000.0)
         return airportElevFt + 120.0 * (oatC - isaTempC)
     }
-    /// TAS = IAS × tasIasRatio (≈2% per 1,000 ft density altitude)
-    var tasIasRatio: Double { max(1.0, 1.0 + 0.02 * max(0, densityAltFt) / 1000.0) }
-    /// POH climb rate degraded ~3% per 1,000 ft density altitude
-    var correctedClimbRateFpm: Double { max(50.0, climbRateFpm * (1.0 - 0.03 * max(0, densityAltFt) / 1000.0)) }
+    /// TAS = IAS × tasIasRatio (≈2% per 1,000 ft density altitude; <1.0 on cold days)
+    var tasIasRatio: Double { max(0.5, 1.0 + 0.02 * densityAltFt / 1000.0) }
+    /// Climb rate corrected for density altitude (~3%/1,000 ft; improves on cold days)
+    var correctedClimbRateFpm: Double { max(50.0, climbRateFpm * (1.0 - 0.03 * densityAltFt / 1000.0)) }
 
     func distFromRunwayAtAlt(altFt: Double, headwindKts: Double) -> Double {
         let tasClimb = climbSpeedKtsNorm * tasIasRatio
@@ -829,7 +829,7 @@ struct ContentView: View {
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
                             .foregroundColor(Color(white: 0.5))
                         let daColor: Color = densityAltFt > airportElevFt + 2000 ? .orange :
-                                             densityAltFt > airportElevFt + 1000 ? .yellow : .green
+                                             densityAltFt > airportElevFt + 500  ? .yellow : .green
                         Text(String(format: "%d ft", Int(densityAltFt.rounded())))
                             .font(.system(size: 20, weight: .heavy, design: .monospaced))
                             .foregroundColor(daColor)
