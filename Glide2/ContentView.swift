@@ -230,27 +230,20 @@ struct ContentView: View {
         return max(0, altFt - altitudeLost(degrees: degrees))
     }
 
+    let appBG = Color(red: 0.055, green: 0.068, blue: 0.085)
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    gaugeSection
-                    weightSection
-                    altSection
-                    distSection
-                    stallSection
-                    turnSection
-                    returnSection
-                    formulaSection
-                    Text("FOR SIMULATION & TRAINING ONLY · VERIFY WITH POH")
-                        .font(.system(size: 14, design: .monospaced))
-                        .foregroundColor(Color.white)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(16)
+            TabView {
+                aircraftTab
+                    .tabItem { Label("Aircraft", systemImage: "airplane") }
+                conditionsTab
+                    .tabItem { Label("Conditions", systemImage: "cloud.sun.fill") }
+                briefTab
+                    .tabItem { Label("Brief", systemImage: "doc.text.fill") }
             }
-            .background(Color(red: 0.055, green: 0.068, blue: 0.085).ignoresSafeArea())
-            .navigationTitle("Best Glide Calculator")
+            .background(appBG.ignoresSafeArea())
+            .navigationTitle(ac.fullName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(white: 0.06), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -272,14 +265,96 @@ struct ContentView: View {
         .onAppear {
             DispatchQueue.main.async {
                 loadSettings()
-                // clamp weight to valid range for this aircraft
                 weight = max(ac.minWeight, min(ac.mtow, weight))
                 displayed = glide
             }
         }
-        .onDisappear {
-            saveSettings()
+        .onDisappear { saveSettings() }
+    }
+
+    var aircraftTab: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                gaugeSection
+                weightSection
+                altSection
+                distSection
+                stallSection
+                turnSection
+            }
+            .padding(16)
         }
+        .background(appBG.ignoresSafeArea())
+    }
+
+    var conditionsTab: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("TODAY'S CONDITIONS")
+                        .font(.system(size: 20, weight: .heavy, design: .monospaced))
+                        .foregroundColor(.white)
+                    Text("Set airport, weather, and runway details for this departure")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(white: 0.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+
+                returnInputsCard
+                    .padding(16)
+                    .background(CardBG(accent: ac.accentColor.opacity(0.18)))
+                    .padding(.horizontal, 16)
+
+                returnFailureAltCard
+                    .padding(.horizontal, 16)
+
+                formulaSection
+                    .padding(.horizontal, 16)
+            }
+            .padding(.bottom, 16)
+        }
+        .background(appBG.ignoresSafeArea())
+    }
+
+    var briefTab: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("PRE-FLIGHT BRIEF")
+                        .font(.system(size: 20, weight: .heavy, design: .monospaced))
+                        .foregroundColor(.white)
+                    Text("Key numbers to write down before takeoff")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(white: 0.5))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+
+                if bankDeg < 5 {
+                    Text("⚠ SET BANK ANGLE IN THE AIRCRAFT TAB TO COMPUTE TURN PERFORMANCE")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 16)
+                }
+
+                summaryCard
+                returnResultsCard
+                returnPhaseBreakdown
+
+                Text("FOR SIMULATION & TRAINING ONLY · VERIFY WITH POH")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(Color(white: 0.4))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+            .padding(.bottom, 16)
+        }
+        .background(appBG.ignoresSafeArea())
     }
 
     // MARK: Gauge
@@ -645,37 +720,6 @@ struct ContentView: View {
     }
 
 
-    // MARK: Minimum Return Altitude
-
-    var returnSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("MINIMUM RETURN ALTITUDE")
-                .font(.system(size: 22, weight: .heavy, design: .monospaced))
-                .foregroundColor(Color.white)
-                .kerning(1.2)
-            Text("ENGINE FAILURE ON DEPARTURE — 180° TURN BACK TO AIRPORT")
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                .foregroundColor(ac.accentColor)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("The minimum height AGL above the airport at which engine failure occurs and a successful return to the runway is still possible.")
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundColor(Color.white)
-                .fixedSize(horizontal: false, vertical: true)
-            returnInputsCard
-            returnFailureAltCard
-            returnResultsCard
-            returnPhaseBreakdown
-            summaryCard
-            if bankDeg < 5 {
-                Text("⚠ SET A BANK ANGLE IN THE STALL SECTION ABOVE TO COMPUTE TURN PERFORMANCE")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(16)
-        .background(CardBG(accent: ac.accentColor.opacity(0.18)))
-    }
 
     var summaryCard: some View {
         let corrFactor  = 1.0 + pilotCorrectionPct / 100.0
