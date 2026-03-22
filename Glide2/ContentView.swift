@@ -1,17 +1,5 @@
 import SwiftUI
 
-// MARK: - Adaptive Tab Style
-private extension View {
-    @ViewBuilder
-    func adaptiveTabStyle() -> some View {
-        if #available(iOS 18.0, *) {
-            self.tabViewStyle(.sidebarAdaptable)
-        } else {
-            self
-        }
-    }
-}
-
 // MARK: - ContentView
 
 private extension Double {
@@ -45,6 +33,9 @@ struct ContentView: View {
     @State private var pressureAltSource = 0       // 0=field elev, 1=manual PA, 2=elev+baro
     @State private var altimeterSetting  = 29.92   // inHg
     @State private var manualPressureAlt = 0.0     // ft, used when source=1
+    @State private var selectedTab       = 0       // active tab index
+
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     // MARK: - Persistence
     private struct SavedSettings: Codable {
@@ -269,19 +260,84 @@ struct ContentView: View {
 
     let appBG = Color(red: 0.055, green: 0.068, blue: 0.085)
 
+    private struct TabDef {
+        let index: Int; let label: String; let icon: String
+    }
+    private let tabs = [
+        TabDef(index: 0, label: "Aircraft Glide",  icon: "airplane"),
+        TabDef(index: 1, label: "Conditions",       icon: "cloud.sun.fill"),
+        TabDef(index: 2, label: "Full Briefing",    icon: "list.bullet.rectangle.portrait"),
+        TabDef(index: 3, label: "Brief",            icon: "doc.text.fill")
+    ]
+
+    @ViewBuilder private var tabContent: some View {
+        switch selectedTab {
+        case 0: aircraftTab
+        case 1: conditionsTab
+        case 2: fullBriefingTab
+        default: briefTab
+        }
+    }
+
+    private var iPadTopTabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(tabs, id: \.index) { tab in
+                Button(action: { selectedTab = tab.index }) {
+                    VStack(spacing: 4) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 16, weight: selectedTab == tab.index ? .bold : .regular))
+                        Text(tab.label)
+                            .font(.system(size: 12, weight: selectedTab == tab.index ? .bold : .regular,
+                                          design: .monospaced))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .foregroundColor(selectedTab == tab.index ? ac.accentColor : Color(white: 0.45))
+                    .background(
+                        selectedTab == tab.index
+                            ? ac.accentColor.opacity(0.12)
+                            : Color.clear
+                    )
+                    .overlay(alignment: .bottom) {
+                        if selectedTab == tab.index {
+                            Rectangle()
+                                .fill(ac.accentColor)
+                                .frame(height: 2)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(Color(white: 0.06))
+        .overlay(alignment: .bottom) {
+            Divider().background(Color(white: 0.15))
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            TabView {
-                aircraftTab
-                    .tabItem { Label("Aircraft Glide", systemImage: "airplane") }
-                conditionsTab
-                    .tabItem { Label("Conditions", systemImage: "cloud.sun.fill") }
-                fullBriefingTab
-                    .tabItem { Label("Full Briefing", systemImage: "list.bullet.rectangle.portrait") }
-                briefTab
-                    .tabItem { Label("Brief", systemImage: "doc.text.fill") }
+            Group {
+                if sizeClass == .regular {
+                    // iPad: custom top tab bar
+                    VStack(spacing: 0) {
+                        iPadTopTabBar
+                        tabContent
+                    }
+                } else {
+                    // iPhone: standard bottom tab bar
+                    TabView(selection: $selectedTab) {
+                        aircraftTab.tag(0)
+                            .tabItem { Label("Aircraft Glide", systemImage: "airplane") }
+                        conditionsTab.tag(1)
+                            .tabItem { Label("Conditions", systemImage: "cloud.sun.fill") }
+                        fullBriefingTab.tag(2)
+                            .tabItem { Label("Full Briefing", systemImage: "list.bullet.rectangle.portrait") }
+                        briefTab.tag(3)
+                            .tabItem { Label("Brief", systemImage: "doc.text.fill") }
+                    }
+                }
             }
-            .adaptiveTabStyle()
             .background(appBG.ignoresSafeArea())
             .navigationTitle(ac.fullName)
             .navigationBarTitleDisplayMode(.inline)
