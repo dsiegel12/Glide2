@@ -2,6 +2,13 @@ import SwiftUI
 
 // MARK: - ContentView
 
+private extension Double {
+    func rounded(to places: Int) -> Double {
+        let factor = pow(10.0, Double(places))
+        return (self * factor).rounded() / factor
+    }
+}
+
 struct ContentView: View {
     let aircraft: Aircraft
     let onChangeAircraft: () -> Void
@@ -23,6 +30,9 @@ struct ContentView: View {
     @State private var displayed         = 76.0
     @State private var oatC              = 15.0   // Outside air temp in °C
     @State private var tempUnit          = 0       // 0 = °C, 1 = °F
+    @State private var pressureAltSource = 0       // 0=field elev, 1=manual PA, 2=elev+baro
+    @State private var altimeterSetting  = 29.92   // inHg
+    @State private var manualPressureAlt = 0.0     // ft, used when source=1
 
     // MARK: - Persistence
     private struct SavedSettings: Codable {
@@ -33,6 +43,9 @@ struct ContentView: View {
         var groundRollFt = 800.0; var climbRateFpm = 700.0
         var climbSpeedKts = 73.0; var climbSpeedUnit = 0
         var oatC: Double? = nil; var tempUnit: Int? = nil
+        var pressureAltSource: Int? = nil
+        var altimeterSetting: Double? = nil
+        var manualPressureAlt: Double? = nil
     }
     func loadSettings() {
         guard let data = UserDefaults.standard.data(forKey: "flightSettings_\(ac.id)"),
@@ -45,6 +58,9 @@ struct ContentView: View {
         climbRateFpm = s.climbRateFpm; climbSpeedKts = s.climbSpeedKts
         climbSpeedUnit = s.climbSpeedUnit
         oatC = s.oatC ?? 15.0; tempUnit = s.tempUnit ?? 0
+        pressureAltSource = s.pressureAltSource ?? 0
+        altimeterSetting  = s.altimeterSetting  ?? 29.92
+        manualPressureAlt = s.manualPressureAlt ?? 0.0
     }
     func saveSettings() {
         let s = SavedSettings(weight: weight, altFt: altFt, bankDeg: bankDeg,
@@ -53,7 +69,9 @@ struct ContentView: View {
             engineFailureAlt: engineFailureAlt, airportElevFt: airportElevFt,
             pilotCorrectionPct: pilotCorrectionPct, groundRollFt: groundRollFt,
             climbRateFpm: climbRateFpm, climbSpeedKts: climbSpeedKts,
-            climbSpeedUnit: climbSpeedUnit, oatC: oatC, tempUnit: tempUnit)
+            climbSpeedUnit: climbSpeedUnit, oatC: oatC, tempUnit: tempUnit,
+            pressureAltSource: pressureAltSource, altimeterSetting: altimeterSetting,
+            manualPressureAlt: manualPressureAlt)
         if let data = try? JSONEncoder().encode(s) {
             UserDefaults.standard.set(data, forKey: "flightSettings_\(ac.id)")
         }
@@ -75,9 +93,16 @@ struct ContentView: View {
 
     // ── Density Altitude ─────────────────────────────────────────────────────
     var oatF: Double { oatC * 9.0 / 5.0 + 32.0 }
+    var pressureAltFt: Double {
+        switch pressureAltSource {
+        case 1:  return manualPressureAlt
+        case 2:  return airportElevFt + (29.92 - altimeterSetting) * 1000.0
+        default: return airportElevFt
+        }
+    }
     var densityAltFt: Double {
-        let isaTempC = 15.0 - 1.98 * (airportElevFt / 1000.0)
-        return airportElevFt + 120.0 * (oatC - isaTempC)
+        let isaTempC = 15.0 - 1.98 * (pressureAltFt / 1000.0)
+        return pressureAltFt + 120.0 * (oatC - isaTempC)
     }
     /// TAS = IAS × tasIasRatio (≈2% per 1,000 ft density altitude; <1.0 on cold days)
     var tasIasRatio: Double { max(0.5, 1.0 + 0.02 * densityAltFt / 1000.0) }
@@ -895,45 +920,153 @@ struct ContentView: View {
 
     var airportElevationRow: some View {
         AnyView(
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("AIRPORT ELEVATION")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(Color.white)
-                            .kerning(1.0)
-                        Text("Airport elevation MSL — used to convert engine failure altitude to AGL")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(Color.white)
-                            .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+
+                // ── Source picker ──────────────────────────────────────────
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("PRESSURE ALTITUDE SOURCE")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(Color.white)
+                        .kerning(1.0)
+                    Picker("", selection: $pressureAltSource) {
+                        Text("Field Elev").tag(0)
+                        Text("Manual PA").tag(1)
+                        Text("Elev + Baro").tag(2)
                     }
-                    Spacer()
-                    HStack(spacing: 0) {
-                        Button { airportElevFt = max(0, airportElevFt - 10) } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(ac.accentColor)
-                                .frame(width: 36, height: 36)
-                                .background(ac.accentColor.opacity(0.15))
-                        }
-                        Text("\(Int(airportElevFt))")
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
-                            .foregroundColor(ac.accentColor)
-                            .frame(minWidth: 52)
-                            .multilineTextAlignment(.center)
-                        Button { airportElevFt = min(14000, airportElevFt + 10) } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(ac.accentColor)
-                                .frame(width: 36, height: 36)
-                                .background(ac.accentColor.opacity(0.15))
-                        }
-                    }
-                    .cornerRadius(8)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.3), lineWidth: 1))
+                    .pickerStyle(.segmented)
                 }
-                Slider(value: $airportElevFt, in: 0...14000, step: 10).tint(ac.accentColor)
-                sliderEndLabels("Sea level", "14,000 ft MSL")
+
+                // ── Field elevation (source 0 or 2) ───────────────────────
+                if pressureAltSource == 0 || pressureAltSource == 2 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .center) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("AIRPORT ELEVATION")
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .foregroundColor(Color.white)
+                                    .kerning(1.0)
+                                Text("Field elevation MSL")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(Color.white.opacity(0.6))
+                            }
+                            Spacer()
+                            HStack(spacing: 0) {
+                                Button { airportElevFt = max(0, airportElevFt - 10) } label: {
+                                    Image(systemName: "minus")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(ac.accentColor)
+                                        .frame(width: 36, height: 36)
+                                        .background(ac.accentColor.opacity(0.15))
+                                }
+                                Text("\(Int(airportElevFt))")
+                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .foregroundColor(ac.accentColor)
+                                    .frame(minWidth: 52)
+                                    .multilineTextAlignment(.center)
+                                Button { airportElevFt = min(14000, airportElevFt + 10) } label: {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(ac.accentColor)
+                                        .frame(width: 36, height: 36)
+                                        .background(ac.accentColor.opacity(0.15))
+                                }
+                            }
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.3), lineWidth: 1))
+                        }
+                        Slider(value: $airportElevFt, in: 0...14000, step: 10).tint(ac.accentColor)
+                        sliderEndLabels("Sea level", "14,000 ft")
+                    }
+                }
+
+                // ── Altimeter setting (source 2) ───────────────────────────
+                if pressureAltSource == 2 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .center) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("ALTIMETER SETTING")
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .foregroundColor(Color.white)
+                                    .kerning(1.0)
+                                Text("From ATIS or ATC")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(Color.white.opacity(0.6))
+                            }
+                            Spacer()
+                            HStack(spacing: 0) {
+                                Button { altimeterSetting = max(27.50, (altimeterSetting - 0.01).rounded(to: 2)) } label: {
+                                    Image(systemName: "minus")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(ac.accentColor)
+                                        .frame(width: 36, height: 36)
+                                        .background(ac.accentColor.opacity(0.15))
+                                }
+                                Text(String(format: "%.2f", altimeterSetting))
+                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .foregroundColor(ac.accentColor)
+                                    .frame(minWidth: 60)
+                                    .multilineTextAlignment(.center)
+                                Button { altimeterSetting = min(31.50, (altimeterSetting + 0.01).rounded(to: 2)) } label: {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(ac.accentColor)
+                                        .frame(width: 36, height: 36)
+                                        .background(ac.accentColor.opacity(0.15))
+                                }
+                            }
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.3), lineWidth: 1))
+                        }
+                        Slider(value: $altimeterSetting, in: 27.50...31.50, step: 0.01).tint(ac.accentColor)
+                        sliderEndLabels("27.50 inHg", "31.50 inHg")
+                        Text(String(format: "Pressure Alt: %d ft", Int(pressureAltFt.rounded())))
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(ac.accentColor)
+                    }
+                }
+
+                // ── Manual pressure altitude (source 1) ───────────────────
+                if pressureAltSource == 1 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .center) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("PRESSURE ALTITUDE")
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .foregroundColor(Color.white)
+                                    .kerning(1.0)
+                                Text("Read directly from altimeter set to 29.92")
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundColor(Color.white.opacity(0.6))
+                            }
+                            Spacer()
+                            HStack(spacing: 0) {
+                                Button { manualPressureAlt = max(0, manualPressureAlt - 10) } label: {
+                                    Image(systemName: "minus")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(ac.accentColor)
+                                        .frame(width: 36, height: 36)
+                                        .background(ac.accentColor.opacity(0.15))
+                                }
+                                Text("\(Int(manualPressureAlt))")
+                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .foregroundColor(ac.accentColor)
+                                    .frame(minWidth: 52)
+                                    .multilineTextAlignment(.center)
+                                Button { manualPressureAlt = min(16000, manualPressureAlt + 10) } label: {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(ac.accentColor)
+                                        .frame(width: 36, height: 36)
+                                        .background(ac.accentColor.opacity(0.15))
+                                }
+                            }
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.3), lineWidth: 1))
+                        }
+                        Slider(value: $manualPressureAlt, in: 0...16000, step: 10).tint(ac.accentColor)
+                        sliderEndLabels("Sea level", "16,000 ft")
+                    }
+                }
             }
         )
     }
