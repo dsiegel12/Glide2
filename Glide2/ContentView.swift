@@ -1,5 +1,17 @@
 import SwiftUI
 
+// MARK: - Adaptive Tab Style
+private extension View {
+    @ViewBuilder
+    func adaptiveTabStyle() -> some View {
+        if #available(iOS 18.0, *) {
+            self.tabViewStyle(.sidebarAdaptable)
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - ContentView
 
 private extension Double {
@@ -269,6 +281,7 @@ struct ContentView: View {
                 briefTab
                     .tabItem { Label("Brief", systemImage: "doc.text.fill") }
             }
+            .adaptiveTabStyle()
             .background(appBG.ignoresSafeArea())
             .navigationTitle(ac.fullName)
             .navigationBarTitleDisplayMode(.inline)
