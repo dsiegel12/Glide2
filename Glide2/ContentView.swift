@@ -261,9 +261,11 @@ struct ContentView: View {
         NavigationStack {
             TabView {
                 aircraftTab
-                    .tabItem { Label("Aircraft", systemImage: "airplane") }
+                    .tabItem { Label("Aircraft Glide", systemImage: "airplane") }
                 conditionsTab
                     .tabItem { Label("Conditions", systemImage: "cloud.sun.fill") }
+                fullBriefingTab
+                    .tabItem { Label("Full Briefing", systemImage: "list.bullet.rectangle.portrait") }
                 briefTab
                     .tabItem { Label("Brief", systemImage: "doc.text.fill") }
             }
@@ -344,6 +346,35 @@ struct ContentView: View {
         .background(appBG.ignoresSafeArea())
     }
 
+    var fullBriefingTab: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("FULL BRIEFING")
+                        .font(.system(size: 20, weight: .heavy, design: .monospaced))
+                        .foregroundColor(.white)
+                    Text("Detailed calculations and phase breakdown")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(white: 0.5))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+
+                returnResultsCard
+                returnPhaseBreakdown
+
+                Text("FOR SIMULATION & TRAINING ONLY · VERIFY WITH POH")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(Color(white: 0.4))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+            .padding(.bottom, 16)
+        }
+        .background(appBG.ignoresSafeArea())
+    }
+
     var briefTab: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -368,8 +399,41 @@ struct ContentView: View {
                 }
 
                 summaryCard
-                returnResultsCard
-                returnPhaseBreakdown
+
+                // Last-minute pilot correction slider
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("PILOT CORRECTION FACTOR")
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color(white: 0.7))
+                            Text("Adds a safety buffer to the minimum return altitudes above")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(Color(white: 0.45))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Text(pilotCorrectionPct == 0 ? "None" : "+\(Int(pilotCorrectionPct))%")
+                            .font(.system(size: 18, weight: .heavy, design: .monospaced))
+                            .foregroundColor(pilotCorrectionPct == 0 ? Color(white: 0.4) : ac.accentColor)
+                    }
+                    Slider(value: $pilotCorrectionPct, in: 0...100, step: 5)
+                        .tint(ac.accentColor)
+                    HStack {
+                        Text("No correction")
+                        Spacer()
+                        Text("+100%")
+                    }
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundColor(Color(white: 0.35))
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(white: 0.05))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(ac.accentColor.opacity(0.25), lineWidth: 1))
+                )
+                .padding(.horizontal, 16)
 
                 Text("FOR SIMULATION & TRAINING ONLY · VERIFY WITH POH")
                     .font(.system(size: 12, design: .monospaced))
@@ -786,25 +850,20 @@ struct ContentView: View {
             Divider().background(Color(white: 0.12))
 
             Group {
+                let corrLabel = pilotCorrectionPct > 0 ? " +\(Int(pilotCorrectionPct))% CORRECTION" : ""
                 if let _ = minReturnAltNoWind {
-                    sumRowAlt("MIN RETURN ALT — NO WIND",
+                    sumRowAlt("NO WIND\(corrLabel)",
                               msl: noWindMSL, agl: noWindAGL, color: ac.accentColor)
                 } else {
-                    sumRow("MIN RETURN ALT — NO WIND", "> 6,000 ft AGL")
+                    sumRow("NO WIND\(corrLabel)", "> 6,000 ft AGL")
                 }
                 if windKts > 0 {
                     if let _ = minReturnAltWithWind {
-                        sumRowAlt("MIN RETURN ALT — \(Int(windKts)) KTS HEADWIND",
+                        sumRowAlt("\(Int(windKts)) KTS HEADWIND\(corrLabel)",
                                   msl: withWindMSL, agl: withWindAGL, color: ac.accentColor)
                     } else {
-                        sumRow("MIN RETURN ALT — \(Int(windKts)) KTS HEADWIND", "> 6,000 ft AGL")
+                        sumRow("\(Int(windKts)) KTS HEADWIND\(corrLabel)", "> 6,000 ft AGL")
                     }
-                }
-                if pilotCorrectionPct > 0 {
-                    Text("Altitudes include \(Int(pilotCorrectionPct))% pilot performance correction.")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(Color(white: 0.45))
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
