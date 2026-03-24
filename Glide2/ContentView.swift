@@ -136,8 +136,10 @@ struct ContentView: View {
         let rxnDist    = distCoveredReactionNM(headwindKts: headwindKts)
         let runwayLengthNM = runwayLengthFt / 6076.12
         let groundRollNM   = groundRollFt / 6076.12
+        // At banked best-glide speed (V·√lf), turn radius = V²·lf / (g·tan φ) = r₀·lf
+        let lf         = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
         let vNMperSec  = glide / 3600.0
-        let rAero      = vNMperSec / (turnRateDegPerSec * .pi / 180.0)
+        let rAero      = vNMperSec / (turnRateDegPerSec * .pi / 180.0) * lf
         let gsTurn     = max(glide - headwindKts, 1.0)
         let rGnd       = rAero * (gsTurn / glide)
         // Only the distance past the departure end matters longitudinally;
@@ -161,10 +163,22 @@ struct ContentView: View {
         return altitudeFt * effectiveRatio / 6076.12
     }
 
+    /// Rate of descent during a banked turn.
+    /// At banked best-glide speed (V·√lf) the sink rate scales as lf^(3/2):
+    ///   • flying faster by √lf raises the base sink rate by √lf
+    ///   • load factor lf then multiplies it again → net factor = lf^(3/2)
+    var rateOfDescentBankedFpm: Double {
+        guard bankDeg > 5 else { return rateOfDescentFpm }
+        let lf = 1.0 / cos(bankDeg * .pi / 180.0)
+        return rateOfDescentFpm * pow(lf, 1.5)
+    }
+
     func minimumReturnAltitude(headwindKts: Double, turnDeg: Double = 180.0) -> Double? {
         guard turnRateDegPerSec > 1.0 else { return nil }
-        let turnTimeSec = turnDeg / turnRateDegPerSec
-        let altLostTurn = rateOfDescentFpm * turnTimeSec / 60.0
+        // At banked best-glide speed the turn rate is ω₀/√lf, so turn time = t₀·√lf
+        let lf = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
+        let turnTimeSec = turnDeg / turnRateDegPerSec * lf.squareRoot()
+        let altLostTurn = rateOfDescentBankedFpm * turnTimeSec / 60.0
         let runwayNM = (runwayLengthFt / 2.0) / 6076.12
 
         for altStep in stride(from: 100.0, through: 5000.0, by: 20.0) {
@@ -191,8 +205,9 @@ struct ContentView: View {
 
     func canReturn(failureAlt: Double, headwindKts: Double, threshold: Double, turnDeg: Double = 180.0) -> Bool {
         guard turnRateDegPerSec > 1.0 else { return false }
-        let turnTimeSec = turnDeg / turnRateDegPerSec
-        let altLostTurn = rateOfDescentFpm * turnTimeSec / 60.0
+        let lf = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
+        let turnTimeSec = turnDeg / turnRateDegPerSec * lf.squareRoot()
+        let altLostTurn = rateOfDescentBankedFpm * turnTimeSec / 60.0
         let offsetNM = lateralOffsetNM(headwindKts: headwindKts, failureAlt: failureAlt, turnDeg: turnDeg)
         let runwayNM = (runwayLengthFt / 2.0) / 6076.12
         let distNeededNM = offsetNM + runwayNM
@@ -217,8 +232,9 @@ struct ContentView: View {
 
     func minimumReturnAltitudeCustomThreshold(headwindKts: Double, threshold: Double, turnDeg: Double = 180.0) -> Double? {
         guard turnRateDegPerSec > 1.0 else { return nil }
-        let turnTimeSec = turnDeg / turnRateDegPerSec
-        let altLostTurn = rateOfDescentFpm * turnTimeSec / 60.0
+        let lf = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
+        let turnTimeSec = turnDeg / turnRateDegPerSec * lf.squareRoot()
+        let altLostTurn = rateOfDescentBankedFpm * turnTimeSec / 60.0
         let runwayNM = (runwayLengthFt / 2.0) / 6076.12
         for altStep in stride(from: 100.0, through: 5000.0, by: 20.0) {
             let offsetNM = lateralOffsetNM(headwindKts: headwindKts, failureAlt: altStep, turnDeg: turnDeg)
