@@ -115,7 +115,7 @@ struct ContentView: View {
     func distFromRunwayAtAlt(altFt: Double, headwindKts: Double) -> Double {
         let tasClimb = climbSpeedKtsNorm * tasIasRatio
         let climbGroundSpeedKts = max(tasClimb - headwindKts, 1.0)
-        let climbGradientFtPerNM = max(correctedClimbRateFpm, 1.0) / climbGroundSpeedKts * 6076.12 / 60.0
+        let climbGradientFtPerNM = max(correctedClimbRateFpm, 1.0) * 60.0 / climbGroundSpeedKts
         guard climbGradientFtPerNM > 0 else { return 0 }
         return altFt / climbGradientFtPerNM
     }
@@ -181,7 +181,7 @@ struct ContentView: View {
         let altLostTurn = rateOfDescentBankedFpm * turnTimeSec / 60.0
         let runwayNM = (runwayLengthFt / 2.0) / 6076.12
 
-        for altStep in stride(from: 100.0, through: 5000.0, by: 20.0) {
+        for altStep in stride(from: 100.0, through: 12000.0, by: 20.0) {
             let offsetNM = lateralOffsetNM(headwindKts: headwindKts, failureAlt: altStep, turnDeg: turnDeg)
             let distNeededNM = offsetNM + runwayNM
             let altAfterReaction = altStep - altLostReaction
@@ -236,7 +236,7 @@ struct ContentView: View {
         let turnTimeSec = turnDeg / turnRateDegPerSec * lf.squareRoot()
         let altLostTurn = rateOfDescentBankedFpm * turnTimeSec / 60.0
         let runwayNM = (runwayLengthFt / 2.0) / 6076.12
-        for altStep in stride(from: 100.0, through: 5000.0, by: 20.0) {
+        for altStep in stride(from: 100.0, through: 12000.0, by: 20.0) {
             let offsetNM = lateralOffsetNM(headwindKts: headwindKts, failureAlt: altStep, turnDeg: turnDeg)
             let distNeededNM = offsetNM + runwayNM
             let altAfterReaction = altStep - altLostReaction
@@ -1295,7 +1295,7 @@ struct ContentView: View {
                     Slider(value: $climbRateFpm, in: 100...2000, step: 50).tint(ac.accentColor)
                     sliderEndLabels("100 fpm", "2,000 fpm")
                     let gsKts = max(climbSpeedKtsNorm - windKts, 1.0)
-                    let gradFtPerNM = climbRateFpm / gsKts * 6076.12 / 60.0
+                    let gradFtPerNM = climbRateFpm * 60.0 / gsKts
                     Text("Climb gradient: \(Int(gradFtPerNM)) ft/NM · \(String(format: "%.1f", gradFtPerNM / 6076.12 * 100))% slope")
                         .font(.system(size: 13, design: .monospaced))
                         .foregroundColor(Color.white)
@@ -1474,7 +1474,9 @@ struct ContentView: View {
             let distFromEnd  = max(0.0, groundRollFt / 6076.12 + climbDistNM - runwayLengthFt / 6076.12)
             let distBack     = glideDistNeededNM(headwindKts: hw, failureAlt: failureAlt, turnDeg: 180)
             let altLostRx    = altLostReaction
-            let altLost180   = rateOfDescentFpm * (180.0 / max(turnRateDegPerSec, 0.01)) / 60.0
+            let lf180        = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
+            let turnTime180  = (180.0 / max(turnRateDegPerSec, 0.01)) * lf180.squareRoot()
+            let altLost180   = rateOfDescentBankedFpm * turnTime180 / 60.0
             let gsReturn     = glide + hw
             let effRatio     = ac.glideRatio * (gsReturn / glide)
             let altForGlide  = max(0, failureAlt - altLostRx - altLost180 - thresholdCrossingHt)
@@ -1695,7 +1697,7 @@ struct ContentView: View {
                             .foregroundColor(canMakeIt ? .green : .red)
                     }
                 } else {
-                    Text(">6,000 ft AGL")
+                    Text(">12,000 ft AGL")
                         .font(.system(size: 30, weight: .heavy, design: .monospaced))
                         .foregroundColor(.red)
                 }
