@@ -136,10 +136,8 @@ struct ContentView: View {
         let rxnDist    = distCoveredReactionNM(headwindKts: headwindKts)
         let runwayLengthNM = runwayLengthFt / 6076.12
         let groundRollNM   = groundRollFt / 6076.12
-        // At banked best-glide speed (V·√lf), turn radius = V²·lf / (g·tan φ) = r₀·lf
-        let lf         = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
         let vNMperSec  = glide / 3600.0
-        let rAero      = vNMperSec / (turnRateDegPerSec * .pi / 180.0) * lf
+        let rAero      = vNMperSec / (turnRateDegPerSec * .pi / 180.0)
         let gsTurn     = max(glide - headwindKts, 1.0)
         let rGnd       = rAero * (gsTurn / glide)
         // Only the distance past the departure end matters longitudinally;
@@ -163,50 +161,25 @@ struct ContentView: View {
         return altitudeFt * effectiveRatio / 6076.12
     }
 
-    /// Rate of descent during a banked turn.
-    /// At banked best-glide speed (V·√lf) the sink rate scales as lf^(3/2):
-    ///   • flying faster by √lf raises the base sink rate by √lf
-    ///   • load factor lf then multiplies it again → net factor = lf^(3/2)
+    // Banked glide at constant IAS: sink increases by (1+lf²)/(2lf) due to reduced effective L/D
     var rateOfDescentBankedFpm: Double {
         guard bankDeg > 5 else { return rateOfDescentFpm }
         let lf = 1.0 / cos(bankDeg * .pi / 180.0)
-        return rateOfDescentFpm * pow(lf, 1.5)
+        return rateOfDescentFpm * (1.0 + lf * lf) / (2.0 * lf)
     }
 
     func minimumReturnAltitude(headwindKts: Double, turnDeg: Double = 180.0) -> Double? {
-        guard turnRateDegPerSec > 1.0 else { return nil }
-        // At banked best-glide speed the turn rate is ω₀/√lf, so turn time = t₀·√lf
-        let lf = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
-        let turnTimeSec = turnDeg / turnRateDegPerSec * lf.squareRoot()
-        let altLostTurn = rateOfDescentBankedFpm * turnTimeSec / 60.0
-        let runwayNM = (runwayLengthFt / 2.0) / 6076.12
-
-        for altStep in stride(from: 100.0, through: 12000.0, by: 20.0) {
-            let offsetNM = lateralOffsetNM(headwindKts: headwindKts, failureAlt: altStep, turnDeg: turnDeg)
-            let distNeededNM = offsetNM + runwayNM
-            let altAfterReaction = altStep - altLostReaction
-            guard altAfterReaction > 0 else { continue }
-            let altAfterTurn = altAfterReaction - altLostTurn
-            guard altAfterTurn > 0 else { continue }
-            let altForGlide = altAfterTurn - thresholdCrossingHt
-            guard altForGlide > 0 else { continue }
-            let distAvailableNM = glideDistReturnNM(altitudeFt: altForGlide, headwindKts: headwindKts)
-            if distAvailableNM >= distNeededNM { return altStep }
-        }
-        return nil
+        minimumReturnAltitudeCustomThreshold(headwindKts: headwindKts, threshold: thresholdCrossingHt, turnDeg: turnDeg)
     }
 
     // ── 180° turn ──────────────────────────────────────────────────────────────
     var minReturnAltNoWind: Double?    { minimumReturnAltitude(headwindKts: 0,       turnDeg: 180) }
     var minReturnAltWithWind: Double?  { minimumReturnAltitude(headwindKts: windKts, turnDeg: 180) }
-    var minReturnAltGeoNoWind: Double? { minimumReturnAltitudeCustomThreshold(headwindKts: 0,       threshold: 0, turnDeg: 180) }
-    var minReturnAltGeoWithWind: Double?{ minimumReturnAltitudeCustomThreshold(headwindKts: windKts, threshold: 0, turnDeg: 180) }
 
 
     func canReturn(failureAlt: Double, headwindKts: Double, threshold: Double, turnDeg: Double = 180.0) -> Bool {
         guard turnRateDegPerSec > 1.0 else { return false }
-        let lf = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
-        let turnTimeSec = turnDeg / turnRateDegPerSec * lf.squareRoot()
+        let turnTimeSec = turnDeg / turnRateDegPerSec
         let altLostTurn = rateOfDescentBankedFpm * turnTimeSec / 60.0
         let offsetNM = lateralOffsetNM(headwindKts: headwindKts, failureAlt: failureAlt, turnDeg: turnDeg)
         let runwayNM = (runwayLengthFt / 2.0) / 6076.12
@@ -224,31 +197,56 @@ struct ContentView: View {
     var engineFailureAltAGL: Double { max(0, engineFailureAlt - airportElevFt) }
     var engineFailureAltMSL: Double { engineFailureAlt }
 
-    var canReturnGeoNoWind: Bool   { canReturn(failureAlt: engineFailureAltAGL, headwindKts: 0,        threshold: 0,                  turnDeg: 180) }
-    var canReturnGeoWithWind: Bool { canReturn(failureAlt: engineFailureAltAGL, headwindKts: windKts,  threshold: 0,                  turnDeg: 180) }
-    var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, headwindKts: 0,        threshold: thresholdCrossingHt, turnDeg: 180) }
+var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, headwindKts: 0,        threshold: thresholdCrossingHt, turnDeg: 180) }
     var canReturnFullWithWind: Bool{ canReturn(failureAlt: engineFailureAltAGL, headwindKts: windKts,  threshold: thresholdCrossingHt, turnDeg: 180) }
 
 
+    // Returns true if the turn is feasible at exactly altStep (internal helper)
+    private func feasibleAt(_ altStep: Double, headwindKts: Double, threshold: Double,
+                            turnDeg: Double, altLostTurn: Double, runwayNM: Double) -> Bool {
+        let altAfterReaction = altStep - altLostReaction
+        guard altAfterReaction > 0 else { return false }
+        let altAfterTurn = altAfterReaction - altLostTurn
+        guard altAfterTurn > 0 else { return false }
+        let altForGlide = altAfterTurn - threshold
+        guard altForGlide > 0 else { return false }
+        let offsetNM = lateralOffsetNM(headwindKts: headwindKts, failureAlt: altStep, turnDeg: turnDeg)
+        let distNeededNM = offsetNM + runwayNM
+        let distAvailableNM = glideDistReturnNM(altitudeFt: altForGlide, headwindKts: headwindKts)
+        return distAvailableNM >= distNeededNM
+    }
+
     func minimumReturnAltitudeCustomThreshold(headwindKts: Double, threshold: Double, turnDeg: Double = 180.0) -> Double? {
+        returnAltitudeWindow(headwindKts: headwindKts, threshold: threshold, turnDeg: turnDeg)?.min
+    }
+
+    /// Returns the (min, max) AGL altitude window within which the return is feasible.
+    /// Returns nil if no feasible window exists within 0–12,000 ft.
+    func returnAltitudeWindow(headwindKts: Double, threshold: Double, turnDeg: Double = 180.0) -> (min: Double, max: Double)? {
         guard turnRateDegPerSec > 1.0 else { return nil }
-        let lf = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
-        let turnTimeSec = turnDeg / turnRateDegPerSec * lf.squareRoot()
+        let turnTimeSec = turnDeg / turnRateDegPerSec
         let altLostTurn = rateOfDescentBankedFpm * turnTimeSec / 60.0
         let runwayNM = (runwayLengthFt / 2.0) / 6076.12
+        // Find first feasible altitude
+        var windowMin: Double? = nil
         for altStep in stride(from: 100.0, through: 12000.0, by: 20.0) {
-            let offsetNM = lateralOffsetNM(headwindKts: headwindKts, failureAlt: altStep, turnDeg: turnDeg)
-            let distNeededNM = offsetNM + runwayNM
-            let altAfterReaction = altStep - altLostReaction
-            guard altAfterReaction > 0 else { continue }
-            let altAfterTurn = altAfterReaction - altLostTurn
-            guard altAfterTurn > 0 else { continue }
-            let altForGlide = altAfterTurn - threshold
-            guard altForGlide > 0 else { continue }
-            let distAvailableNM = glideDistReturnNM(altitudeFt: altForGlide, headwindKts: headwindKts)
-            if distAvailableNM >= distNeededNM { return altStep }
+            if feasibleAt(altStep, headwindKts: headwindKts, threshold: threshold,
+                          turnDeg: turnDeg, altLostTurn: altLostTurn, runwayNM: runwayNM) {
+                windowMin = altStep
+                break
+            }
         }
-        return nil
+        guard let wMin = windowMin else { return nil }
+        // Find where it becomes infeasible again (upper bound)
+        var windowMax = 12000.0
+        for altStep in stride(from: wMin + 20, through: 12000.0, by: 20.0) {
+            if !feasibleAt(altStep, headwindKts: headwindKts, threshold: threshold,
+                           turnDeg: turnDeg, altLostTurn: altLostTurn, runwayNM: runwayNM) {
+                windowMax = altStep - 20
+                break
+            }
+        }
+        return (min: wMin, max: windowMax)
     }
 
     // ── Rate of Descent ───────────────────────────────────────────────────────
@@ -896,11 +894,7 @@ struct ContentView: View {
 
 
     var summaryCard: some View {
-        let corrFactor  = 1.0 + pilotCorrectionPct / 100.0
-        let noWindAGL   = (minReturnAltNoWind   ?? 0) * corrFactor
-        let withWindAGL = (minReturnAltWithWind ?? 0) * corrFactor
-        let noWindMSL   = noWindAGL + airportElevFt
-        let withWindMSL = withWindAGL + airportElevFt
+        let corrFactor = 1.0 + pilotCorrectionPct / 100.0
 
         return VStack(alignment: .leading, spacing: 10) {
             Text("PILOT SUMMARY — \(ac.fullName.uppercased())")
@@ -924,6 +918,9 @@ struct ContentView: View {
                        "\(Int(glide.rounded())) kts  /  \(Int(glideMph.rounded())) mph")
                 sumRow("STALL SPEED (\(Int(bankDeg.rounded()))° BANK)",
                        "\(Int(stall.kts.rounded())) kts  /  \(Int(stall.mph.rounded())) mph")
+                let stallLevel = ac.stallSpeed(bankDeg: 0, weight: weight)
+                sumRow("STALL SPEED (0° BANK — STRAIGHT GLIDE)",
+                       "\(Int(stallLevel.kts.rounded())) kts  /  \(Int(stallLevel.mph.rounded())) mph")
                 sumRow("BANK ANGLE", "\(Int(bankDeg.rounded()))°")
                 sumRow("CLIMB SPEED (Vy)",
                        "\(Int(climbSpeedKts.rounded())) kts  /  \(Int((climbSpeedKts * 1.15078).rounded())) mph")
@@ -936,19 +933,25 @@ struct ContentView: View {
 
             Group {
                 let corrLabel = pilotCorrectionPct > 0 ? " +\(Int(pilotCorrectionPct))% CORRECTION" : ""
-                if let _ = minReturnAltNoWind {
-                    sumRowAlt("NO WIND\(corrLabel)",
-                              msl: noWindMSL, agl: noWindAGL, color: ac.accentColor)
-                } else {
-                    sumRow("NO WIND\(corrLabel)", "> 6,000 ft AGL")
-                }
+                let fullWinNW = returnAltitudeWindow(headwindKts: 0, threshold: thresholdCrossingHt, turnDeg: 180)
+
+                Text("NO WIND")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color(white: 0.5))
+
+                sumWindowRow("  \(Int(thresholdCrossingHt)) FT THRESHOLD\(corrLabel)", window: fullWinNW,
+                              corrFactor: corrFactor, color: ac.accentColor)
+
                 if windKts > 0 {
-                    if let _ = minReturnAltWithWind {
-                        sumRowAlt("\(Int(windKts)) KTS HEADWIND\(corrLabel)",
-                                  msl: withWindMSL, agl: withWindAGL, color: ac.accentColor)
-                    } else {
-                        sumRow("\(Int(windKts)) KTS HEADWIND\(corrLabel)", "> 6,000 ft AGL")
-                    }
+                    let fullWinWW = returnAltitudeWindow(headwindKts: windKts, threshold: thresholdCrossingHt, turnDeg: 180)
+
+                    Divider().background(Color(white: 0.12))
+                    Text("\(Int(windKts)) KTS HEADWIND")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color(white: 0.5))
+
+                    sumWindowRow("  \(Int(thresholdCrossingHt)) FT THRESHOLD\(corrLabel)", window: fullWinWW,
+                                  corrFactor: corrFactor, color: Color(red: 0.48, green: 0.71, blue: 0.88))
                 }
             }
         }
@@ -970,6 +973,35 @@ struct ContentView: View {
                 .font(.system(size: 14, weight: .bold, design: .monospaced))
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    func sumWindowRow(_ label: String, window: (min: Double, max: Double)?, corrFactor: Double, color: Color) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Color(white: 0.7))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let w = window {
+                let corrMin    = w.min * corrFactor
+                let corrMinMSL = corrMin + airportElevFt
+                let maxLabel   = w.max >= 11980 ? "unlimited" : "\(Int(w.max.rounded())) ft AGL"
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("MIN \(Int(corrMinMSL.rounded())) ft MSL")
+                        .font(.system(size: 16, weight: .heavy, design: .monospaced))
+                        .foregroundColor(color)
+                    Text("\(Int(corrMin.rounded())) ft AGL")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(white: 0.6))
+                    Text("MAX \(maxLabel)")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(white: 0.5))
+                }
+            } else {
+                Text("NO ALTITUDE WORKS")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundColor(.red)
+            }
         }
     }
 
@@ -1394,21 +1426,22 @@ struct ContentView: View {
                 .kerning(1.5)
                 .fixedSize(horizontal: false, vertical: true)
 
+                let fullWindowNoWind = returnAltitudeWindow(headwindKts: 0, threshold: thresholdCrossingHt, turnDeg: 180)
+
                 turnStrategyBlock(
                     windLabel: "NO WIND",
-                    geoAlt: minReturnAltGeoNoWind,
-                    fullAlt: minReturnAltNoWind,
+                    window: fullWindowNoWind,
                     failureAlt: engineFailureAltAGL,
                     color: ac.accentColor,
                     isWind: false
                 )
 
                 if windKts > 0 {
+                    let fullWindowWind = returnAltitudeWindow(headwindKts: windKts, threshold: thresholdCrossingHt, turnDeg: 180)
                     Divider().background(Color.white)
                     turnStrategyBlock(
                         windLabel: "\(Int(windKts)) KTS HEADWIND ON DEPARTURE",
-                        geoAlt: minReturnAltGeoWithWind,
-                        fullAlt: minReturnAltWithWind,
+                        window: fullWindowWind,
                         failureAlt: engineFailureAltAGL,
                         color: Color(red: 0.48, green: 0.71, blue: 0.88),
                         isWind: true
@@ -1454,10 +1487,10 @@ struct ContentView: View {
     }
 
     func turnStrategyBlock(windLabel: String,
-                           geoAlt: Double?, fullAlt: Double?,
+                           window: (min: Double, max: Double)?,
                            failureAlt: Double, color: Color, isWind: Bool) -> some View {
         let fullOk = isWind ? canReturnFullWithWind : canReturnFullNoWind
-        let geoOk  = isWind ? canReturnGeoWithWind  : canReturnGeoNoWind
+        let fullAlt = window?.min
 
         return AnyView(VStack(alignment: .leading, spacing: 12) {
             Text(windLabel)
@@ -1474,14 +1507,11 @@ struct ContentView: View {
             let distFromEnd  = max(0.0, groundRollFt / 6076.12 + climbDistNM - runwayLengthFt / 6076.12)
             let distBack     = glideDistNeededNM(headwindKts: hw, failureAlt: failureAlt, turnDeg: 180)
             let altLostRx    = altLostReaction
-            let lf180        = bankDeg > 5 ? 1.0 / cos(bankDeg * .pi / 180.0) : 1.0
-            let turnTime180  = (180.0 / max(turnRateDegPerSec, 0.01)) * lf180.squareRoot()
+            let turnTime180  = 180.0 / max(turnRateDegPerSec, 0.01)
             let altLost180   = rateOfDescentBankedFpm * turnTime180 / 60.0
-            let gsReturn     = glide + hw
-            let effRatio     = ac.glideRatio * (gsReturn / glide)
-            let altForGlide  = max(0, failureAlt - altLostRx - altLost180 - thresholdCrossingHt)
-            let glideAvail   = altForGlide * effRatio / 6076.12
-            let glideMargin  = glideAvail - distBack
+            let altForGlide = max(0, failureAlt - altLostRx - altLost180 - thresholdCrossingHt)
+            let glideAvail  = glideDistReturnNM(altitudeFt: altForGlide, headwindKts: hw)
+            let glideMargin = glideAvail - distBack
 
             // Distances card
             VStack(alignment: .leading, spacing: 8) {
@@ -1528,7 +1558,7 @@ struct ContentView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(distFromEnd > 0
-                             ? "BACK — GLIDE DISTANCE TO DEPARTURE END (180° TURN)"
+                             ? "REQUIRED RETURN DISTANCE (after 180° turn)"
                              : "LATERAL ALIGNMENT — DISTANCE TO RE-ALIGN WITH RUNWAY CENTERLINE")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .foregroundColor(Color.white)
@@ -1559,51 +1589,50 @@ struct ContentView: View {
 
             // Glide available vs needed
             VStack(alignment: .leading, spacing: 8) {
-                Text("GLIDE RANGE AT ENGINE FAILURE (\(Int(failureAlt + airportElevFt)) FT MSL / \(Int(failureAlt)) FT AGL)")
+                Text("GLIDE CHECK AT \(Int(failureAlt + airportElevFt)) FT MSL / \(Int(failureAlt)) FT AGL")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .foregroundColor(Color.white)
                     .kerning(1.0)
                     .fixedSize(horizontal: false, vertical: true)
 
+                // Row header
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("NEEDED")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color.white)
-                        Text(String(format: "%.2f NM", distBack))
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
-                            .foregroundColor(.red.opacity(0.9))
-                        Text("\(Int((distBack * 6076.12).rounded())) ft")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(Color.white)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("SCENARIO")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.5))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("REQUIRED")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.5))
+                        .frame(width: 70, alignment: .trailing)
+                    Text("AVAILABLE")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.5))
+                        .frame(width: 80, alignment: .trailing)
+                    Text("RESULT")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.5))
+                        .frame(width: 55, alignment: .trailing)
+                }
 
-                    VStack(alignment: .center, spacing: 2) {
-                        Text("AVAILABLE")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color.white)
-                        Text(String(format: "%.2f NM", glideAvail))
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
-                            .foregroundColor(.green.opacity(0.9))
-                        Text("\(Int((glideAvail * 6076.12).rounded())) ft")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(Color.white)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("MARGIN")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color.white)
-                        Text(String(format: "%+.2f NM", glideMargin))
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
-                            .foregroundColor(glideMargin >= 0 ? .green : .red)
-                        Text("\(glideMargin >= 0 ? "+" : "")\(Int((glideMargin * 6076.12).rounded())) ft")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(glideMargin >= 0 ? .green.opacity(0.8) : .red.opacity(0.8))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                // Threshold row
+                HStack {
+                    Text("At threshold \(Int(thresholdCrossingHt)) ft AGL")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(String(format: "%.2f NM", distBack))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .frame(width: 70, alignment: .trailing)
+                    Text(String(format: "%.2f NM", glideAvail))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(glideMargin >= 0 ? .green : .red)
+                        .frame(width: 80, alignment: .trailing)
+                    Text(glideMargin >= 0 ? "GO" : "NO GO")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(glideMargin >= 0 ? .green : .red)
+                        .frame(width: 55, alignment: .trailing)
                 }
             }
             .padding(10)
@@ -1612,21 +1641,10 @@ struct ContentView: View {
                 .overlay(RoundedRectangle(cornerRadius: 6)
                     .stroke(glideMargin >= 0 ? Color.green.opacity(0.25) : Color.red.opacity(0.25), lineWidth: 1)))
 
-            // Geometric minimum (0 ft threshold)
-            altRow(
-                rowLabel: "REACH RUNWAY (0 ft at threshold)",
-                sublabel: "Geometrically possible to reach runway. No flare margin.",
-                altOpt: geoAlt,
-                failureAlt: failureAlt,
-                canMakeIt: geoOk,
-                color: color
-            )
-
-            // With threshold crossing height
             altRow(
                 rowLabel: "REACH THRESHOLD AT \(Int(thresholdCrossingHt)) FT AGL",
-                sublabel: "Arrives at threshold with margin to flare and land.",
-                altOpt: fullAlt,
+                sublabel: "Arrives at threshold with \(Int(thresholdCrossingHt)) ft AGL to flare and land.",
+                window: window,
                 failureAlt: failureAlt,
                 canMakeIt: fullOk,
                 color: color
@@ -1635,7 +1653,7 @@ struct ContentView: View {
             // GO / NO GO
             HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("ENGINE FAILURE AT \(Int(failureAlt)) FT AGL")
+                    Text("ENGINE FAILURE AT \(Int(failureAlt + airportElevFt)) FT MSL / \(Int(failureAlt)) FT AGL")
                         .font(.system(size: 13, design: .monospaced))
                         .foregroundColor(Color.white)
                     if let minAlt = fullAlt {
@@ -1669,9 +1687,11 @@ struct ContentView: View {
         GoNoGoBox(ok: ok)
     }
 
-    func altRow(rowLabel: String, sublabel: String, altOpt: Double?, failureAlt: Double, canMakeIt: Bool, color: Color) -> some View {
+    func altRow(rowLabel: String, sublabel: String, window: (min: Double, max: Double)?, failureAlt: Double, canMakeIt: Bool, color: Color) -> some View {
+        let altOpt = window?.min
+        let narrowWindow = window.map { $0.max - $0.min < 500 } ?? false
         return AnyView(VStack(alignment: .leading, spacing: 8) {
-            // Labels + minimum altitude
+            // Labels + altitude window
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(rowLabel)
@@ -1684,22 +1704,39 @@ struct ContentView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                if let alt = altOpt {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text("\(Int((alt + airportElevFt).rounded())) ft MSL")
-                            .font(.system(size: 30, weight: .heavy, design: .monospaced))
+                if let w = window {
+                    let maxLabel = w.max >= 11980 ? "unlimited" : "\(Int(w.max.rounded())) ft AGL"
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("MIN \(Int((w.min + airportElevFt).rounded())) ft MSL")
+                            .font(.system(size: 26, weight: .heavy, design: .monospaced))
                             .foregroundColor(canMakeIt ? color : .red)
-                        Text("\(Int(alt.rounded())) ft AGL")
-                            .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                            .foregroundColor(canMakeIt ? color.opacity(0.75) : .red.opacity(0.75))
+                        Text("\(Int(w.min.rounded())) ft AGL")
+                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            .foregroundColor(canMakeIt ? color.opacity(0.85) : .red.opacity(0.85))
+                        Text("MAX \(maxLabel)")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundColor(narrowWindow ? .orange : color.opacity(0.7))
+                        if narrowWindow {
+                            Text("⚠ NARROW WINDOW")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(.orange)
+                        }
                         Text(canMakeIt ? "✓ POSSIBLE" : "✗ NOT POSSIBLE")
                             .font(.system(size: 13, weight: .bold, design: .monospaced))
                             .foregroundColor(canMakeIt ? .green : .red)
                     }
                 } else {
-                    Text(">12,000 ft AGL")
-                        .font(.system(size: 30, weight: .heavy, design: .monospaced))
-                        .foregroundColor(.red)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("NO ALTITUDE")
+                            .font(.system(size: 22, weight: .heavy, design: .monospaced))
+                            .foregroundColor(.red)
+                        Text("WORKS")
+                            .font(.system(size: 22, weight: .heavy, design: .monospaced))
+                            .foregroundColor(.red)
+                        Text("✗ NOT POSSIBLE")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(.red)
+                    }
                 }
             }
 
@@ -1707,30 +1744,40 @@ struct ContentView: View {
             if let alt = altOpt {
                 let corrAGL = alt * (1 + pilotCorrectionPct / 100)
                 let corrMSL = corrAGL + airportElevFt
+                let corrExceedsWindow = window.map { corrAGL > $0.max && $0.max < 11980 } ?? false
                 Divider().background(Color(white: 0.18))
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("PILOT CORRECTION: \(Int(pilotCorrectionPct))%")
                             .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Color.orange)
-                        Text("Adds margin for imperfect execution")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.6))
+                            .foregroundColor(corrExceedsWindow ? .red : Color.orange)
+                        if corrExceedsWindow {
+                            Text("⚠ Corrected altitude exceeds the upper bound — above this height the aircraft is too far from the runway to glide back. Correction is not meaningful here.")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.red.opacity(0.85))
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text("Adds margin for imperfect execution")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(Color.white.opacity(0.6))
+                        }
                         Slider(value: $pilotCorrectionPct, in: 0...100, step: 5)
-                            .tint(.orange)
+                            .tint(corrExceedsWindow ? .red : .orange)
                             .frame(maxWidth: 200)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text("\(Int(corrMSL.rounded())) ft MSL")
-                            .font(.system(size: 30, weight: .heavy, design: .monospaced))
-                            .foregroundColor(.orange)
-                        Text("\(Int(corrAGL.rounded())) ft AGL")
-                            .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Color.orange.opacity(0.75))
-                        Text("WITH CORRECTION")
+                        Text(corrExceedsWindow ? "NO GO" : "\(Int(corrMSL.rounded())) ft MSL")
+                            .font(.system(size: corrExceedsWindow ? 22 : 28, weight: .heavy, design: .monospaced))
+                            .foregroundColor(corrExceedsWindow ? .red : .orange)
+                        if !corrExceedsWindow {
+                            Text("\(Int(corrAGL.rounded())) ft AGL")
+                                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Color.orange.opacity(0.75))
+                        }
+                        Text(corrExceedsWindow ? "ABOVE MAX ALTITUDE" : "WITH CORRECTION")
                             .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(.orange)
+                            .foregroundColor(corrExceedsWindow ? .red : .orange)
                     }
                 }
             }

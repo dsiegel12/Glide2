@@ -126,7 +126,7 @@ let builtInAircraft: [Aircraft] = [
         id: "C175A",
         fullName: "Cessna 175A Skylark",
         mtow: 2350, minWeight: 1000,
-        refWeight: 2350, refGlideSpeed: 73, glideRatio: 8.5,
+        refWeight: 2350, refGlideSpeed: 69.5, glideRatio: 8.5,  // 80 mph best glide per POH
         colorHex: "#5C9CD6",
         isUserDefined: false,
         stallSpeeds: [52.1, 53.9, 60.0, 73.9]  // converted from POH mph values
