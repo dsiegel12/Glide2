@@ -385,8 +385,13 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
     var aircraftTab: some View {
         ScrollView {
             VStack(spacing: 16) {
-                gaugeSection
+                Text("Understanding the relationship among aircraft weight, best glide speed, altitude, glide distance, bank angle, and stall speed.")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(Color.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 4)
                 weightSection
+                gaugeSection
                 altSection
                 distSection
                 stallSection
@@ -408,6 +413,11 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(Color(white: 0.5))
                         .fixedSize(horizontal: false, vertical: true)
+                    Text("The following variables in this tab affect glide distance in the impossible turn scenario.")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(white: 0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -416,9 +426,6 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
                 returnInputsCard
                     .padding(16)
                     .background(CardBG(accent: ac.accentColor.opacity(0.18)))
-                    .padding(.horizontal, 16)
-
-                returnFailureAltCard
                     .padding(.horizontal, 16)
 
                 formulaSection
@@ -439,6 +446,11 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
                     Text("Detailed calculations and phase breakdown")
                         .font(.system(size: 12, design: .monospaced))
                         .foregroundColor(Color(white: 0.5))
+                    Text("Shows results of Tab 2 inputs of returning to the airport in both no headwind and headwind conditions. Altitudes can also be adjusted for imperfect piloting technique.")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(white: 0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -533,14 +545,6 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
 
     var gaugeSection: some View {
         VStack(spacing: 14) {
-            Text("BEST GLIDE SPEED")
-                .font(.system(size: 15, design: .monospaced))
-                .foregroundColor(Color.white)
-                .kerning(1.5)
-
-            GaugeView(value: displayed, color: ac.accentColor)
-                .frame(width: 200, height: 200)
-                .onChange(of: glide) { animateNeedle() }
 
             HStack(spacing: 0) {
                 SpeedPair(kts: glide, mph: glideMph, color: ac.accentColor, label: "BEST GLIDE")
@@ -1255,6 +1259,59 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
                     .kerning(1.5)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
+                airportElevationRow
+
+                Divider().background(Color(white: 0.15))
+
+                inputRow(
+                    label: "ENGINE FAILURE ALTITUDE",
+                    sublabel: "Enter as MSL — AGL is calculated from airport elevation above",
+                    value: engineFailureAltAGL > 0
+                        ? "\(Int(engineFailureAltMSL)) ft MSL  (\(Int(engineFailureAltAGL)) ft AGL)"
+                        : "\(Int(engineFailureAltMSL)) ft MSL  (below airport elevation)"
+                )
+                if engineFailureAltAGL <= 0 {
+                    Text("⚠ MSL altitude is at or below airport elevation — increase the slider")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Slider(value: $engineFailureAlt,
+                       in: 0...15000,
+                       step: 50).tint(engineFailureAltAGL > 0 ? ac.accentColor : .red)
+                sliderEndLabels("0 ft MSL", "15,000 ft MSL")
+                HStack(spacing: 6) {
+                    ForEach([-50, -5], id: \.self) { step in
+                        Button {
+                            engineFailureAlt = max(0, min(15000, engineFailureAlt + Double(step)))
+                        } label: {
+                            Text("\(step) ft")
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(ac.accentColor)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(ac.accentColor.opacity(0.12))
+                                .cornerRadius(6)
+                        }
+                    }
+                    Spacer()
+                    ForEach([5, 50], id: \.self) { step in
+                        Button {
+                            engineFailureAlt = max(0, min(15000, engineFailureAlt + Double(step)))
+                        } label: {
+                            Text("+\(step) ft")
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(ac.accentColor)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(ac.accentColor.opacity(0.12))
+                                .cornerRadius(6)
+                        }
+                    }
+                }
+
+                Divider().background(Color(white: 0.15))
+
                 inputRow(
                     label: "REACTION TIME",
                     sublabel: "Seconds from engine failure to establishing glide attitude",
@@ -1266,16 +1323,22 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
                 Divider().background(Color(white: 0.15))
 
                 inputRow(
+                    label: "BANK ANGLE",
+                    sublabel: "Bank angle used during the return turn",
+                    value: "\(Int(bankDeg.rounded()))°"
+                )
+                Slider(value: $bankDeg, in: 0...80, step: 1).tint(ac.accentColor)
+                sliderEndLabels("0°", "80°")
+
+                Divider().background(Color(white: 0.15))
+
+                inputRow(
                     label: "RUNWAY LENGTH",
                     sublabel: "Full length of departure runway",
                     value: "\(Int(runwayLengthFt)) ft"
                 )
                 Slider(value: $runwayLengthFt, in: 1000...10000, step: 100).tint(ac.accentColor)
                 sliderEndLabels("1,000 ft", "10,000 ft")
-
-                Divider().background(Color(white: 0.15))
-
-                airportElevationRow
 
                 Divider().background(Color(white: 0.15))
 
