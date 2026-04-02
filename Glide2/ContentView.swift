@@ -396,6 +396,12 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
                 distSection
                 stallSection
                 turnSection
+                Text("FOR SIMULATION & TRAINING ONLY - VERIFY WITH POH")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
             }
             .padding(16)
         }
@@ -430,6 +436,12 @@ var canReturnFullNoWind: Bool  { canReturn(failureAlt: engineFailureAltAGL, head
 
                 formulaSection
                     .padding(.horizontal, 16)
+                Text("FOR SIMULATION & TRAINING ONLY - VERIFY WITH POH")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.4))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
             }
             .padding(.bottom, 16)
         }
