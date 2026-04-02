@@ -11,6 +11,7 @@ struct AircraftSelectionView: View {
 
     var body: some View {
         NavigationStack {
+            VStack(spacing: 0) {
             List {
                 ForEach(store.aircraft) { ac in
                     aircraftRow(ac)
@@ -68,6 +69,23 @@ struct AircraftSelectionView: View {
             } message: {
                 Text("This cannot be undone.")
             }
+
+            // Aviation Safety Disclaimer
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Aviation Safety Disclaimer")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.55))
+                Text("This application is for informational and educational purposes only. It does not constitute flight instruction, operational guidance, or real-time decision-making advice. Always follow certified training, official flight manuals, and FAA guidance. The \"impossible turn\" and similar maneuvers can be extremely hazardous and should only be attempted by trained pilots under appropriate conditions and at their own risk. The user is solely responsible for all flight decisions.")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.35))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(red: 0.055, green: 0.068, blue: 0.085))
+
+            } // end VStack
         }
         .preferredColorScheme(.dark)
     }
