@@ -157,7 +157,7 @@ struct ContentView: View {
         let tailwindKts = headwindKts
         let tasAtGlide = glide * tasIasRatio
         let groundSpeedReturn = tasAtGlide + tailwindKts
-        let effectiveRatio = ac.glideRatio * (groundSpeedReturn / glide)
+        let effectiveRatio = ac.glideRatio * (groundSpeedReturn / tasAtGlide)
         return altitudeFt * effectiveRatio / 6076.12
     }
 
